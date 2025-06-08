@@ -1,0 +1,18 @@
+Port,Description,Protocol,Enabled
+80,Nginx HTTP (dify),TCP,1
+443,Nginx HTTPS (dify),TCP,1
+3000,Napcat-1,TCP,1
+3001,Napcat-2,TCP,1
+3210,lobeChat,TCP,1
+5003,Dify Plugin Daemon (dify),TCP,1
+5050,python test port,TCP,1
+5140-5149,koishi,TCP,1
+5300,Langbot,TCP,1
+6099,Napcat-3,TCP,1
+8000,lobeChat-CASDOOR,TCP,1
+9000,lobeChat-MINIO1,TCP,1
+9001,lobeChat-MINIO2,TCP,1
+2280-2290,Langbot API Service Range,TCP,1
+21115,RustDesk Relay Server (hbbs),TCP,1
+21116,RustDesk Relay Server (hbbs),BOTH,1
+21117,RustDesk Rendezvous Server (hbbr),TCP,1

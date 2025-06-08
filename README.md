@@ -86,14 +86,14 @@ firewall-manager/
 编辑 `ports.csv` 文件，按照以下格式配置需要管理的端口：
 
 ```csv
-Port,Description,Protocol
-80,Web Server HTTP,TCP
-443,Web Server HTTPS,TCP
-3306,MySQL Database,TCP
-27017,MongoDB Database,TCP
-8080-8090,Application Server Range,TCP
-53,DNS Server,UDP
-1194,OpenVPN,BOTH
+Port,Description,Protocol,Enabled
+80,Web Server HTTP,TCP,1
+443,Web Server HTTPS,TCP,1
+3306,MySQL Database,TCP,1
+27017,MongoDB Database,TCP,1
+8080-8090,Application Server Range,TCP,1
+53,DNS Server,UDP,1
+1194,OpenVPN,BOTH,1
 ```
 
 ### 3. 以管理员身份运行
@@ -214,6 +214,7 @@ $ruleBaseName = "Your Custom Rule Name"
 | Port        | 端口号或端口范围 | `80`, `443`, `5140-5149` | ✅   |
 | Description | 规则描述         | `Nginx HTTP Server`          | ✅   |
 | Protocol    | 协议类型         | `TCP`, `UDP`, `BOTH`     | ✅   |
+| Enabled     | 规则启用状态     | `1` (启用), `0` (禁用)     | ❌   |
 
 ### 协议选项
 
@@ -226,33 +227,39 @@ $ruleBaseName = "Your Custom Rule Name"
 - **单个端口**：`80`, `443`, `3000`
 - **端口范围**：`5000-5050`
 
+### 启用状态
+
+- **1**：启用规则（允许流量通过）
+- **0**：禁用规则（阻止流量通过）
+- **不填**：默认启用
+
 ## 📝 使用示例
 
 ### 示例1：Web服务器配置
 
 ```csv
-Port,Description,Protocol
-80,HTTP Server,TCP
-443,HTTPS Server,TCP
-8080,Alternative HTTP,TCP
+Port,Description,Protocol,Enabled
+80,HTTP Server,TCP,1
+443,HTTPS Server,TCP,1
+8080,Alternative HTTP,TCP,0
 ```
 
 ### 示例2：游戏服务器配置
 
 ```csv
-Port,Description,Protocol
-25565,Minecraft Server,TCP
-7777,Game Server,BOTH
-19132,Bedrock Server,UDP
+Port,Description,Protocol,Enabled
+25565,Minecraft Server,TCP,1
+7777,Game Server,BOTH,1
+19132,Bedrock Server,UDP,0
 ```
 
 ### 示例3：开发环境配置
 
 ```csv
-Port,Description,Protocol
-3000,React Dev Server,TCP
-5000,Flask Backend,TCP
-8000-8010,Microservices Range,TCP
+Port,Description,Protocol,Enabled
+3000,React Dev Server,TCP,1
+5000,Flask Backend,TCP,1
+8000-8010,Microservices Range,TCP,0
 ```
 
 ## 🔧 命令行参数

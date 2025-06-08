@@ -36,6 +36,7 @@ function Save-CurrentState {
         $portSpec = $entry.Port
         $description = $entry.Description
         $protocol = $entry.Protocol.ToUpper().Trim()
+        $enabled = if ($entry.PSObject.Properties['Enabled']) { $entry.Enabled -eq '1' } else { $true }
 
         # Determine which protocols to process
         $protocolsToProcess = @()
@@ -66,6 +67,7 @@ function Save-CurrentState {
                     Protocol = $currentProtocol
                     Description = $description
                     OriginalSpec = $portSpec
+                    Enabled = $enabled
                 }
             }
         }
@@ -220,6 +222,7 @@ if ($portsConfig) {
         $portSpec = $entry.Port # This can be a single port or a range like "2280-2290"
         $description = $entry.Description
         $protocol = $entry.Protocol.ToUpper().Trim() # Normalize protocol to uppercase
+        $enabled = if ($entry.PSObject.Properties['Enabled']) { $entry.Enabled -eq '1' } else { $true }
 
         # Validate protocol
         if ($protocol -notin @("TCP", "UDP", "BOTH")) {
@@ -276,6 +279,7 @@ if ($portsConfig) {
                         Protocol = $currentProtocol
                         Description = $description
                         OriginalSpec = $portSpec
+                        Enabled = $enabled
                     }
                 }
 
@@ -303,7 +307,7 @@ if ($portsConfig) {
                         $skippedCount++
                     }
                 } else {
-                    # --- CREATE RULES MODE (Default) ---
+                    # --- CREATE/UPDATE RULES MODE (Default) ---
                     if (-not $existingRule) {
                         Write-Host "INFO: Attempting to create firewall rule: $individualRuleName" -ForegroundColor White
                         try {
@@ -313,19 +317,26 @@ if ($portsConfig) {
                                 -LocalPort $portNumber `
                                 -Action Allow `
                                 -Profile $ruleProfiles `
-                                -Enabled True `
+                                -Enabled $enabled `
                                 -ErrorAction Stop
 
                             $createdCount++
-                            Write-Host "SUCCESS: Firewall rule created for port: $portNumber/$currentProtocol (Description: $description)" -ForegroundColor Green
+                            Write-Host "SUCCESS: Firewall rule created for port: $portNumber/$currentProtocol (Description: $description) - Enabled: $enabled" -ForegroundColor Green
                         } catch {
                             $errorCount++
                             Write-Warning "ERROR: Failed to create firewall rule for port '$portNumber/$currentProtocol' (Description: $description): $($_.Exception.Message)"
                             Write-Warning "       This might require administrator privileges or the rule already exists with a different display name."
                         }
                     } else {
-                        Write-Host "INFO: Firewall rule already exists for port: $portNumber/$currentProtocol (Description: $description) - SKIPPED" -ForegroundColor DarkYellow
-                        $skippedCount++
+                        # Update existing rule's enabled state
+                        try {
+                            Set-NetFirewallRule -DisplayName $individualRuleName -Enabled $enabled -ErrorAction Stop
+                            Write-Host "INFO: Updated firewall rule state for port: $portNumber/$currentProtocol (Description: $description) - Enabled: $enabled" -ForegroundColor DarkYellow
+                            $skippedCount++
+                        } catch {
+                            $errorCount++
+                            Write-Warning "ERROR: Failed to update firewall rule state for port '$portNumber/$currentProtocol' (Description: $description): $($_.Exception.Message)"
+                        }
                     }
                 }
             } # End of foreach ($portNumber in $portsToProcess)
