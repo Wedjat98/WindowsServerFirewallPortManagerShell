@@ -1,89 +1,89 @@
 # FirewallPort Manager
 
-一个用于批量管理Windows防火墙规则的PowerShell脚本，支持通过CSV文件配置端口规则，可同时处理TCP和UDP协议。
+A PowerShell script for batch management of Windows Firewall rules, supporting port rule configuration via CSV files and handling both TCP and UDP protocols.
 
-## 🚀 功能特性
+## 🚀 Features
 
-- ✅ **批量管理**：通过CSV文件批量创建或删除防火墙规则
-- ✅ **协议支持**：支持TCP、UDP或同时开放两种协议
-- ✅ **端口范围**：支持单个端口和端口范围（如 `2280-2290`）
-- ✅ **智能检测**：自动检测现有规则，避免重复创建
-- ✅ **详细日志**：提供详细的操作日志和统计信息
-- ✅ **安全删除**：支持批量删除已创建的规则
-- ✅ **错误处理**：完善的错误处理和验证机制
+- ✅ **Batch Management**: Create or delete firewall rules in bulk through CSV files
+- ✅ **Protocol Support**: Support for TCP, UDP, or both protocols simultaneously
+- ✅ **Port Ranges**: Support for single ports and port ranges (e.g., `2280-2290`)
+- ✅ **Smart Detection**: Automatically detect existing rules to avoid duplicates
+- ✅ **Detailed Logging**: Comprehensive operation logs and statistics
+- ✅ **Safe Deletion**: Support for batch deletion of created rules
+- ✅ **Error Handling**: Robust error handling and validation mechanisms
+- ✅ **Rule Control**: Enable/disable individual rules
+- ✅ **Performance Optimization**: Optimized rule processing logic for improved speed
 
-## 📋 系统要求
+## 📋 System Requirements
 
-- **操作系统**：Windows 10/11 或 Windows Server 2016+
-- **PowerShell**：PowerShell 5.1 或更高版本
-- **权限**：管理员权限（修改防火墙规则需要）
-- **模块**：NetSecurity 模块（Windows内置）
+- **Operating System**: Windows 10/11 or Windows Server 2016+
+- **PowerShell**: PowerShell 5.1 or higher
+- **Permissions**: Administrator privileges (required for modifying firewall rules)
+- **Module**: NetSecurity module (built into Windows)
 
-## 📁 文件结构
+## 📁 File Structure
 
 ```
 firewall-manager/
-├── firewall-rules.ps1    # 主脚本文件
-├── ports.csv            # 端口配置文件
-├── open-port-test.py    # 端口测试工具
-└── README.md            # 说明文档
+├── firewall-rules.ps1    # Main script file
+├── ports.csv            # Port configuration file
+├── open-port-test.py    # Port testing tool
+└── README.md            # Documentation
 ```
 
-## 🔍 端口测试工具
+## 🔍 Port Testing Tool
 
-项目包含一个Python测试工具 `open-port-test.py`，用于验证防火墙规则是否正确配置。这个工具可以：
+The project includes a Python testing tool `open-port-test.py` for verifying firewall rule configurations. This tool can:
 
-- 创建临时的HTTP/HTTPS测试服务器
-- 验证端口是否成功开放
-- 显示服务器信息和连接状态
-- 支持SSL加密连接测试
+- Create temporary HTTP/HTTPS test servers
+- Verify port accessibility
+- Display server information and connection status
+- Support SSL encrypted connection testing
 
-### 使用方法
+### Usage
 
-1. **安装Python依赖**
+1. **Install Python Dependencies**
    ```bash
    pip install -r requirements.txt
    ```
 
-2. **运行测试服务器**
+2. **Run Test Server**
    ```bash
-   # 测试HTTP端口
+   # Test HTTP port
    python open-port-test.py 80
 
-   # 测试HTTPS端口（需要SSL证书）
+   # Test HTTPS port (requires SSL certificate)
    python open-port-test.py 443 --ssl
    ```
 
-3. **访问测试页面**
-   - 本机访问：`http://localhost:端口号`
-   - 局域网访问：`http://内网IP:端口号`
+3. **Access Test Page**
+   - Local access: `http://localhost:port`
+   - LAN access: `http://local-ip:port`
 
-### 测试结果说明
+### Test Results
 
-测试页面会显示：
-- 服务器主机名
-- 内网IP地址
-- 监听端口
-- 使用的协议（HTTP/HTTPS）
-- 客户端IP地址
-- 连接状态
+The test page displays:
+- Server hostname
+- Local IP address
+- Listening port
+- Protocol used (HTTP/HTTPS)
+- Client IP address
+- Connection status
 
-### 注意事项
+### Notes
 
-- 运行测试服务器需要Python 3.6+
-- 使用HTTPS模式需要准备SSL证书（key.pem和cert.pem）
-- 测试完成后请及时关闭测试服务器
-- 建议在测试环境中使用，不要在生产环境长期运行
+- Python 3.6+ required to run the test server
+- SSL certificates (key.pem and cert.pem) needed for HTTPS mode
+- Close the test server after use
+- Recommended for testing environments only
 
-## 🛠️ 安装与设置
+## 🛠️ Installation and Setup
 
-### 1. 下载文件
+### 1. Download Files
+Place `firewall-rules.ps1` and `ports.csv` in the same directory.
 
-将 `firewall-rules.ps1` 和 `ports.csv` 放在同一个目录中。
-
-### 2. 配置CSV文件
-
-编辑 `ports.csv` 文件，按照以下格式配置需要管理的端口：
+### 2. Configure CSV File
+Edit the `ports.csv` file with the following format:
 
 ```csv
 Port,Description,Protocol,Enabled
@@ -96,146 +96,114 @@ Port,Description,Protocol,Enabled
 1194,OpenVPN,BOTH,True
 ```
 
-### 3. 以管理员身份运行
+### 3. Run as Administrator
+Right-click PowerShell and select "Run as Administrator".
 
-右键点击PowerShell，选择"以管理员身份运行"。
+## 🐚 PS1 Shell Usage Guide
 
-## 🐚 PS1 Shell 使用说明
+### Basic Usage
 
-### 基本使用
+1. **Open PowerShell**
+   - Press `Win + X`, select "Windows PowerShell (Admin)" or "Windows Terminal (Admin)"
+   - Or press `Win + R`, type `powershell`, press `Ctrl + Shift + Enter` to run as admin
 
-1. **打开 PowerShell**
-
-   - 按 `Win + X`，选择 "Windows PowerShell (管理员)" 或 "Windows Terminal (管理员)"
-   - 或按 `Win + R`，输入 `powershell`，按 `Ctrl + Shift + Enter` 以管理员身份运行
-2. **导航到脚本目录**
-
+2. **Navigate to Script Directory**
    ```powershell
    cd "C:\path\to\your\script"
    ```
-3. **设置执行策略**（如果需要）
 
+3. **Set Execution Policy** (if needed)
    ```powershell
    Set-ExecutionPolicy -ExecutionPolicy RemoteSigned -Scope CurrentUser
    ```
-4. **运行脚本**
 
+4. **Run Script**
    ```powershell
    .\firewall-rules.ps1
    ```
 
-### 常用命令
+### Common Commands
 
-- **查看帮助信息**
-
+- **View Help**
   ```powershell
   Get-Help .\firewall-rules.ps1
   ```
-- **查看详细帮助**
 
+- **View Detailed Help**
   ```powershell
   Get-Help .\firewall-rules.ps1 -Detailed
   ```
-- **查看示例**
 
+- **View Examples**
   ```powershell
   Get-Help .\firewall-rules.ps1 -Examples
   ```
 
-### 调试技巧
+### Debugging Tips
 
-1. **启用详细输出**
-
+1. **Enable Verbose Output**
    ```powershell
    $VerbosePreference = "Continue"
    .\firewall-rules.ps1 -Verbose
    ```
-2. **查看当前防火墙规则**
 
+2. **View Current Firewall Rules**
    ```powershell
    Get-NetFirewallRule | Where-Object {$_.DisplayName -like "*Your Rule Name*"}
    ```
-3. **检查脚本执行权限**
 
+3. **Check Script Execution Policy**
    ```powershell
    Get-ExecutionPolicy
    ```
 
-### 常见问题解决
+### Common Issues
 
-1. **如果遇到"无法加载文件"错误**
+1. **If "Cannot Load File" Error Occurs**
+   - Check file path
+   - Verify UTF-8 encoding
+   - Check file permissions
 
-   - 检查文件路径是否正确
-   - 确认文件编码为 UTF-8
-   - 验证文件权限
-2. **如果遇到"执行策略限制"错误**
-
+2. **If "Execution Policy Restriction" Error Occurs**
    ```powershell
    Set-ExecutionPolicy -ExecutionPolicy RemoteSigned -Scope CurrentUser
    ```
-3. **如果需要查看详细错误信息**
 
+3. **To View Detailed Error Information**
    ```powershell
    $ErrorActionPreference = "Continue"
    .\firewall-rules.ps1
    ```
 
-## 📖 使用方法
+## 📊 CSV File Format
 
-### 创建防火墙规则
+| Column | Description | Example | Required |
+|--------|-------------|---------|----------|
+| Port | Port number or range | `80`, `443`, `5140-5149` | ✅ |
+| Description | Rule description | `Nginx HTTP Server` | ✅ |
+| Protocol | Protocol type | `TCP`, `UDP`, `BOTH` | ✅ |
+| Enabled | Rule status | `True` (enabled), `False` (disabled) | ❌ |
 
-```powershell
-# 导航到脚本目录
-cd "C:\path\to\your\script"
+### Protocol Options
 
-# 执行脚本创建规则
-.\firewall-rules.ps1
-```
+- **TCP**: Create TCP protocol rules only
+- **UDP**: Create UDP protocol rules only
+- **BOTH**: Create both TCP and UDP protocol rules
 
-### 删除防火墙规则
+### Port Format
 
-```powershell
-# 删除所有由脚本创建的规则
-.\firewall-rules.ps1 -RemoveRules
-```
+- **Single Port**: `80`, `443`, `3000`
+- **Port Range**: `5000-5050`
 
-### 修改规则基础名称
+### Enable Status
 
-如果需要修改防火墙规则的基础名称，编辑脚本中的 `$ruleBaseName` 变量：
+- **True**: Enable rule (allow traffic)
+- **False**: Disable rule (block traffic)
+- **Empty**: Default to enabled
 
-```powershell
-$ruleBaseName = "Your Custom Rule Name"
-```
+## 📝 Usage Examples
 
-## 📊 CSV文件格式说明
-
-| 列名        | 描述             | 示例                           | 必填 |
-| ----------- | ---------------- | ------------------------------ | ---- |
-| Port        | 端口号或端口范围 | `80`, `443`, `5140-5149` | ✅   |
-| Description | 规则描述         | `Nginx HTTP Server`          | ✅   |
-| Protocol    | 协议类型         | `TCP`, `UDP`, `BOTH`     | ✅   |
-| Enabled     | 规则启用状态     | `True` (启用), `False` (禁用)     | ❌   |
-
-### 协议选项
-
-- **TCP**：仅创建TCP协议规则
-- **UDP**：仅创建UDP协议规则
-- **BOTH**：同时创建TCP和UDP协议规则
-
-### 端口格式
-
-- **单个端口**：`80`, `443`, `3000`
-- **端口范围**：`5000-5050`
-
-### 启用状态
-
-- **True**：启用规则（允许流量通过）
-- **False**：禁用规则（阻止流量通过）
-- **不填**：默认启用
-
-## 📝 使用示例
-
-### 示例1：Web服务器配置
+### Example 1: Web Server Configuration
 
 ```csv
 Port,Description,Protocol,Enabled
@@ -244,7 +212,7 @@ Port,Description,Protocol,Enabled
 8080,Alternative HTTP,TCP,False
 ```
 
-### 示例2：游戏服务器配置
+### Example 2: Game Server Configuration
 
 ```csv
 Port,Description,Protocol,Enabled
@@ -253,7 +221,7 @@ Port,Description,Protocol,Enabled
 19132,Bedrock Server,UDP,False
 ```
 
-### 示例3：开发环境配置
+### Example 3: Development Environment Configuration
 
 ```csv
 Port,Description,Protocol,Enabled
@@ -262,22 +230,22 @@ Port,Description,Protocol,Enabled
 8000-8010,Microservices Range,TCP,False
 ```
 
-## 🔧 命令行参数
+## 🔧 Command Line Parameters
 
-| 参数             | 类型   | 描述         | 示例                                  |
-| ---------------- | ------ | ------------ | ------------------------------------- |
-| `-RemoveRules` | Switch | 删除规则模式 | `.\firewall-rules.ps1 -RemoveRules` |
+| Parameter | Type | Description | Example |
+|-----------|------|-------------|---------|
+| `-RemoveRules` | Switch | Delete rules mode | `.\firewall-rules.ps1 -RemoveRules` |
 
-## 📋 输出日志说明
+## 📋 Output Log Description
 
-脚本运行时会显示详细的操作日志：
+The script displays detailed operation logs:
 
-- **🔵 INFO**：一般信息
-- **🟢 SUCCESS**：操作成功
-- **🟡 WARNING**：警告信息
-- **🔴 ERROR**：错误信息
+- **🔵 INFO**: General information
+- **🟢 SUCCESS**: Operation successful
+- **🟡 WARNING**: Warning messages
+- **🔴 ERROR**: Error messages
 
-### 运行结果统计
+### Run Results Summary
 
 ```
 --- Summary ---
@@ -287,72 +255,68 @@ Errors Encountered: 0
 --- Script Finished ---
 ```
 
-## ⚠️ 注意事项
+## ⚠️ Important Notes
 
-### 权限要求
+### Permission Requirements
+- Must run PowerShell as **Administrator**
+- Ensure you have permission to modify Windows Firewall
 
-- 必须以**管理员身份**运行PowerShell
-- 确保具有修改Windows防火墙的权限
+### Security Recommendations
+- Only open necessary ports
+- Regularly review firewall rules
+- Test in a test environment before production use
 
-### 安全建议
+### Network Configuration
+- Rules created by the script apply to all network profiles (Domain, Private, Public)
+- To modify scope, edit the `$ruleProfiles` variable in the script
 
-- 仅开放必要的端口
-- 定期审查防火墙规则
-- 在生产环境使用前先在测试环境验证
+## 🐛 Troubleshooting
 
-### 网络配置
+### Common Errors
 
-- 脚本创建的规则适用于所有网络配置文件（Domain, Private, Public）
-- 如需修改适用范围，可编辑脚本中的 `$ruleProfiles` 变量
-
-## 🐛 故障排除
-
-### 常见错误
-
-**错误1：权限不足**
-
+**Error 1: Insufficient Permissions**
 ```
 ERROR: Failed to create firewall rule: Access is denied
 ```
+**Solution**: Run PowerShell as Administrator
 
-**解决方案**：以管理员身份运行PowerShell
-
-**错误2：CSV文件格式错误**
-
+**Error 2: CSV File Format Error**
 ```
 ERROR: Missing 'Protocol' column in CSV row
 ```
+**Solution**: Check CSV file format, ensure all required columns are present
 
-**解决方案**：检查CSV文件格式，确保包含所有必需列
-
-**错误3：端口范围格式错误**
-
+**Error 3: Invalid Port Range Format**
 ```
 WARNING: Invalid port range '2280-' for description 'Test'
 ```
+**Solution**: Check port range format, should be `startPort-endPort`
 
-**解决方案**：检查端口范围格式，应为 `startPort-endPort`
+### Debugging Tips
 
-### 调试建议
+1. **Check CSV File**: Ensure UTF-8 encoding and correct format
+2. **Verify Port Numbers**: Ensure ports are within valid range (1-65535)
+3. **Check Existing Rules**: Use `Get-NetFirewallRule` to view current rules
 
-1. **检查CSV文件**：确保文件编码为UTF-8，格式正确
-2. **验证端口号**：确保端口号在有效范围内（1-65535）
-3. **检查现有规则**：使用 `Get-NetFirewallRule` 查看现有规则
+## 📞 Support
 
-## 📞 支持
+If you encounter issues or have suggestions for improvement:
 
-如果遇到问题或有改进建议，请：
+1. Check this README document
+2. Verify system requirements and permissions
+3. Check script output error messages
+4. Check Windows Event Logs
 
-1. 检查本README文档
-2. 验证系统要求和权限
-3. 查看脚本输出的错误信息
-4. 检查Windows事件日志
+## 📄 License
 
-## 📄 许可证
+This script is for learning and personal use only. Please comply with relevant laws and enterprise security policies when using.
 
-本脚本仅供学习和个人使用。使用时请遵守相关法律法规和企业安全政策。
+## 🔄 Version History
 
-## 🔄 版本历史
-
-- **v2.0**：添加TCP/UDP协议支持，改进错误处理
-- **v1.0**：基础版本，仅支持TCP协议
+- **v3.0**:
+  - Added rule enable/disable functionality
+  - Optimized rule processing performance
+  - Improved batch operation efficiency
+  - Reduced memory usage
+- **v2.0**: Added TCP/UDP protocol support, improved error handling
+- **v1.0**: Basic version, TCP protocol only
