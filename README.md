@@ -25,8 +25,55 @@
 firewall-manager/
 ├── firewall-rules.ps1    # 主脚本文件
 ├── ports.csv            # 端口配置文件
+├── open-port-test.py    # 端口测试工具
 └── README.md            # 说明文档
 ```
+
+## 🔍 端口测试工具
+
+项目包含一个Python测试工具 `open-port-test.py`，用于验证防火墙规则是否正确配置。这个工具可以：
+
+- 创建临时的HTTP/HTTPS测试服务器
+- 验证端口是否成功开放
+- 显示服务器信息和连接状态
+- 支持SSL加密连接测试
+
+### 使用方法
+
+1. **安装Python依赖**
+   ```bash
+   pip install -r requirements.txt
+   ```
+
+2. **运行测试服务器**
+   ```bash
+   # 测试HTTP端口
+   python open-port-test.py 80
+
+   # 测试HTTPS端口（需要SSL证书）
+   python open-port-test.py 443 --ssl
+   ```
+
+3. **访问测试页面**
+   - 本机访问：`http://localhost:端口号`
+   - 局域网访问：`http://内网IP:端口号`
+
+### 测试结果说明
+
+测试页面会显示：
+- 服务器主机名
+- 内网IP地址
+- 监听端口
+- 使用的协议（HTTP/HTTPS）
+- 客户端IP地址
+- 连接状态
+
+### 注意事项
+
+- 运行测试服务器需要Python 3.6+
+- 使用HTTPS模式需要准备SSL证书（key.pem和cert.pem）
+- 测试完成后请及时关闭测试服务器
+- 建议在测试环境中使用，不要在生产环境长期运行
 
 ## 🛠️ 安装与设置
 
