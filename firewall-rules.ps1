@@ -28,6 +28,33 @@ function Get-PortProtocolKey {
     return "$Port/$Protocol"
 }
 
+function Get-AllExistingRules {
+    param($RuleBaseName)
+    
+    Write-Host "INFO: Loading existing firewall rules (this may take a moment)..." -ForegroundColor Cyan
+    
+    try {
+        # Get all rules that start with our base name in one query
+        $existingRules = Get-NetFirewallRule -DisplayName "$RuleBaseName*" -ErrorAction SilentlyContinue
+        
+        # Create a hashtable for fast lookups with detailed rule information
+        $ruleHashTable = @{}
+        foreach ($rule in $existingRules) {
+            $ruleHashTable[$rule.DisplayName] = @{
+                Rule = $rule
+                Enabled = $rule.Enabled
+                DisplayName = $rule.DisplayName
+            }
+        }
+        
+        Write-Host "INFO: Found $($existingRules.Count) existing rules matching pattern '$RuleBaseName*'" -ForegroundColor Cyan
+        return $ruleHashTable
+    } catch {
+        Write-Warning "WARNING: Error loading existing rules: $($_.Exception.Message)"
+        return @{}
+    }
+}
+
 function Save-CurrentState {
     param($PortsConfig)
     
@@ -98,7 +125,7 @@ function Get-PreviousState {
 }
 
 function Remove-ObsoleteRules {
-    param($PreviousState, $CurrentState)
+    param($PreviousState, $CurrentState, $ExistingRulesHash)
     
     $removedCount = 0
     $errorCount = 0
@@ -110,6 +137,9 @@ function Remove-ObsoleteRules {
         $currentKeys[$key] = $true
     }
     
+    # Collect all rules to remove first
+    $rulesToRemove = @()
+    
     # Find ports that existed before but don't exist now
     foreach ($previous in $PreviousState) {
         $key = Get-PortProtocolKey -Port $previous.Port -Protocol $previous.Protocol
@@ -117,17 +147,24 @@ function Remove-ObsoleteRules {
             # This port-protocol combination was removed from CSV
             $individualRuleName = "$ruleBaseName - $($previous.Description) (Port $($previous.Port)/$($previous.Protocol))"
             
-            $existingRule = Get-NetFirewallRule -DisplayName $individualRuleName -ErrorAction SilentlyContinue
-            if ($existingRule) {
-                Write-Host "INFO: Auto-removing obsolete firewall rule: $individualRuleName" -ForegroundColor Magenta
-                try {
-                    Remove-NetFirewallRule -DisplayName $individualRuleName -Confirm:$false -ErrorAction Stop
-                    $removedCount++
-                    Write-Host "SUCCESS: Obsolete rule removed for port: $($previous.Port)/$($previous.Protocol)" -ForegroundColor Green
-                } catch {
-                    $errorCount++
-                    Write-Warning "ERROR: Failed to remove obsolete rule for port '$($previous.Port)/$($previous.Protocol)': $($_.Exception.Message)"
-                }
+            if ($ExistingRulesHash.ContainsKey($individualRuleName)) {
+                $rulesToRemove += $individualRuleName
+            }
+        }
+    }
+    
+    # Remove rules in batch
+    if ($rulesToRemove.Count -gt 0) {
+        Write-Host "INFO: Auto-removing $($rulesToRemove.Count) obsolete firewall rules..." -ForegroundColor Magenta
+        
+        foreach ($ruleName in $rulesToRemove) {
+            try {
+                Remove-NetFirewallRule -DisplayName $ruleName -Confirm:$false -ErrorAction Stop
+                $removedCount++
+                Write-Host "SUCCESS: Obsolete rule removed: $ruleName" -ForegroundColor Green
+            } catch {
+                $errorCount++
+                Write-Warning "ERROR: Failed to remove obsolete rule '$ruleName': $($_.Exception.Message)"
             }
         }
     }
@@ -140,9 +177,112 @@ function Remove-ObsoleteRules {
     }
 }
 
+function Process-RulesBatch {
+    param($RulesData, $ExistingRulesHash, $IsRemoveMode)
+    
+    $createdCount = 0
+    $skippedCount = 0
+    $removedCount = 0
+    $errorCount = 0
+    $updatedCount = 0
+    
+    # Group operations by type for better performance
+    $rulesToCreate = @()
+    $rulesToUpdate = @()
+    $rulesToRemove = @()
+    
+    foreach ($ruleData in $RulesData) {
+        $ruleName = $ruleData.RuleName
+        $ruleExists = $ExistingRulesHash.ContainsKey($ruleName)
+        
+        if ($IsRemoveMode) {
+            if ($ruleExists) {
+                $rulesToRemove += $ruleData
+            } else {
+                $skippedCount++
+                Write-Host "INFO: No firewall rule found to remove for port: $($ruleData.Port)/$($ruleData.Protocol) (Description: $($ruleData.Description)) - SKIPPED" -ForegroundColor Cyan
+            }
+        } else {
+            if (-not $ruleExists) {
+                $rulesToCreate += $ruleData
+            } else {
+                # Check if the enabled state actually needs to be updated
+                $existingRule = $ExistingRulesHash[$ruleName]
+                if ($existingRule.Enabled -ne $ruleData.Enabled) {
+                    $rulesToUpdate += $ruleData
+                } else {
+                    $skippedCount++
+                    Write-Host "INFO: Firewall rule already in correct state for port: $($ruleData.Port)/$($ruleData.Protocol) (Description: $($ruleData.Description)) - Enabled: $($ruleData.Enabled) - SKIPPED" -ForegroundColor Cyan
+                }
+            }
+        }
+    }
+    
+    # Process creations
+    if ($rulesToCreate.Count -gt 0 -and -not $IsRemoveMode) {
+        Write-Host "INFO: Creating $($rulesToCreate.Count) new firewall rules..." -ForegroundColor Green
+        foreach ($ruleData in $rulesToCreate) {
+            try {
+                New-NetFirewallRule -DisplayName $ruleData.RuleName `
+                    -Direction Inbound `
+                    -Protocol $ruleData.Protocol `
+                    -LocalPort $ruleData.Port `
+                    -Action Allow `
+                    -Profile $ruleProfiles `
+                    -Enabled $ruleData.Enabled `
+                    -ErrorAction Stop
+
+                $createdCount++
+                Write-Host "SUCCESS: Firewall rule created for port: $($ruleData.Port)/$($ruleData.Protocol) (Description: $($ruleData.Description)) - Enabled: $($ruleData.Enabled)" -ForegroundColor Green
+            } catch {
+                $errorCount++
+                Write-Warning "ERROR: Failed to create firewall rule for port '$($ruleData.Port)/$($ruleData.Protocol)' (Description: $($ruleData.Description)): $($_.Exception.Message)"
+            }
+        }
+    }
+    
+    # Process updates
+    if ($rulesToUpdate.Count -gt 0 -and -not $IsRemoveMode) {
+        Write-Host "INFO: Updating $($rulesToUpdate.Count) firewall rules that need state changes..." -ForegroundColor Yellow
+        foreach ($ruleData in $rulesToUpdate) {
+            try {
+                Set-NetFirewallRule -DisplayName $ruleData.RuleName -Enabled $ruleData.Enabled -ErrorAction Stop
+                Write-Host "SUCCESS: Updated firewall rule state for port: $($ruleData.Port)/$($ruleData.Protocol) (Description: $($ruleData.Description)) - Enabled: $($ruleData.Enabled)" -ForegroundColor Green
+                $updatedCount++
+            } catch {
+                $errorCount++
+                Write-Warning "ERROR: Failed to update firewall rule state for port '$($ruleData.Port)/$($ruleData.Protocol)' (Description: $($ruleData.Description)): $($_.Exception.Message)"
+            }
+        }
+    }
+    
+    # Process removals
+    if ($rulesToRemove.Count -gt 0 -and $IsRemoveMode) {
+        Write-Host "INFO: Removing $($rulesToRemove.Count) firewall rules..." -ForegroundColor Red
+        foreach ($ruleData in $rulesToRemove) {
+            try {
+                Remove-NetFirewallRule -DisplayName $ruleData.RuleName -Confirm:$false -ErrorAction Stop
+                $removedCount++
+                Write-Host "SUCCESS: Firewall rule removed for port: $($ruleData.Port)/$($ruleData.Protocol) (Description: $($ruleData.Description))" -ForegroundColor Green
+            } catch {
+                $errorCount++
+                Write-Warning "ERROR: Failed to remove firewall rule for port '$($ruleData.Port)/$($ruleData.Protocol)' (Description: $($ruleData.Description)): $($_.Exception.Message)"
+            }
+        }
+    }
+    
+    return @{
+        Created = $createdCount
+        Updated = $updatedCount
+        Skipped = $skippedCount
+        Removed = $removedCount
+        Errors = $errorCount
+    }
+}
+
 # --- Main Script Logic ---
 
-Write-Host "--- Starting Intelligent Firewall Rule Management ---" -ForegroundColor Cyan
+Write-Host "--- Starting Optimized Firewall Rule Management ---" -ForegroundColor Cyan
 Write-Host "CSV File Path: $csvFilePath" -ForegroundColor Cyan
 Write-Host "State File Path: $stateFilePath" -ForegroundColor Cyan
 Write-Host "Rule Base Name: $ruleBaseName" -ForegroundColor Cyan
@@ -187,6 +327,9 @@ if (-not $portsConfig) {
     }
 }
 
+# Load existing rules once at the beginning for performance
+$existingRulesHash = Get-AllExistingRules -RuleBaseName $ruleBaseName
+
 # Load previous state for comparison (only if not in RemoveRules mode)
 $previousState = @()
 $currentState = @()
@@ -196,35 +339,32 @@ if (-not $RemoveRules.IsPresent -and -not $SkipAutoCleanup.IsPresent) {
     Write-Host "INFO: Loaded previous state with $($previousState.Count) port-protocol combinations" -ForegroundColor Cyan
 }
 
-$createdCount = 0
-$skippedCount = 0
-$removedCount = 0
-$errorCount = 0
+# Prepare all rule data for batch processing
+$allRulesData = @()
 
 # Process current CSV configuration
 if ($portsConfig) {
+    Write-Host "INFO: Processing CSV configuration..." -ForegroundColor Cyan
+    
     # Loop through each port entry/range in the CSV
     foreach ($entry in $portsConfig) {
         # Validate CSV column presence
         if (-not $entry.PSObject.Properties['Port']) {
             Write-Warning "Skipping entry: Missing 'Port' column in CSV row: $($entry | ConvertTo-Json -Compress)"
-            $errorCount++
             continue
         }
         if (-not $entry.PSObject.Properties['Description']) {
             Write-Warning "Skipping entry: Missing 'Description' column in CSV row: $($entry | ConvertTo-Json -Compress)"
-            $errorCount++
             continue
         }
         if (-not $entry.PSObject.Properties['Protocol']) {
             Write-Warning "Skipping entry: Missing 'Protocol' column in CSV row: $($entry | ConvertTo-Json -Compress)"
-            $errorCount++
             continue
         }
 
-        $portSpec = $entry.Port # This can be a single port or a range like "2280-2290"
+        $portSpec = $entry.Port
         $description = $entry.Description
-        $protocol = $entry.Protocol.ToUpper().Trim() # Normalize protocol to uppercase
+        $protocol = $entry.Protocol.ToUpper().Trim()
         $enabled = if ($entry.PSObject.Properties['Enabled']) { 
             if ($entry.Enabled -eq '1') { [Microsoft.PowerShell.Cmdletization.GeneratedTypes.NetSecurity.Enabled]::True }
             else { [Microsoft.PowerShell.Cmdletization.GeneratedTypes.NetSecurity.Enabled]::False }
@@ -233,7 +373,6 @@ if ($portsConfig) {
         # Validate protocol
         if ($protocol -notin @("TCP", "UDP", "BOTH")) {
             Write-Warning "Skipping entry: Invalid protocol '$($entry.Protocol)' for port '$portSpec'. Must be 'TCP', 'UDP', or 'BOTH'."
-            $errorCount++
             continue
         }
 
@@ -245,38 +384,31 @@ if ($portsConfig) {
             "BOTH" { $protocolsToProcess += @("TCP", "UDP") }
         }
 
-        # --- Parse the port specification (single port or range) ---
+        # Parse the port specification
         $portsToProcess = @()
 
         if ($portSpec -match '^\d+-\d+$') {
-            # It's a range (e.g., "2280-2290")
             $rangeParts = $portSpec.Split('-')
             $startPort = [int]$rangeParts[0]
             $endPort = [int]$rangeParts[1]
 
             if ($startPort -gt $endPort) {
                 Write-Warning "Skipping entry: Invalid port range '$portSpec' for description '$description'. Start port cannot be greater than end port."
-                $errorCount++
                 continue
             }
 
-            # Generate all ports in the range
             for ($i = $startPort; $i -le $endPort; $i++) {
                 $portsToProcess += $i
             }
         } elseif ($portSpec -match '^\d+$') {
-            # It's a single port (e.g., "80")
             $portsToProcess += [int]$portSpec
         } else {
-            # Invalid format
             Write-Warning "Skipping entry: Invalid port specification '$portSpec' for description '$description'. Must be a single port or a range (e.g., '80' or '2280-2290')."
-            $errorCount++
             continue
         }
 
-        # --- Process each protocol ---
+        # Create rule data for each protocol and port combination
         foreach ($currentProtocol in $protocolsToProcess) {
-            # --- Process each individual port (from a single port or a range) ---
             foreach ($portNumber in $portsToProcess) {
                 # Add to current state for comparison
                 if (-not $RemoveRules.IsPresent) {
@@ -289,79 +421,37 @@ if ($portsConfig) {
                     }
                 }
 
-                # Construct the unique rule name for each individual port and protocol
                 $individualRuleName = "$ruleBaseName - $description (Port $portNumber/$currentProtocol)"
-
-                # Check if the firewall rule already exists
-                $existingRule = Get-NetFirewallRule -DisplayName $individualRuleName -ErrorAction SilentlyContinue
-
-                if ($RemoveRules.IsPresent) {
-                    # --- REMOVE RULES MODE ---
-                    if ($existingRule) {
-                        Write-Host "INFO: Attempting to remove firewall rule: $individualRuleName" -ForegroundColor DarkYellow
-                        try {
-                            Remove-NetFirewallRule -DisplayName $individualRuleName -Confirm:$false -ErrorAction Stop
-                            $removedCount++
-                            Write-Host "SUCCESS: Firewall rule removed for port: $portNumber/$currentProtocol (Description: $description)" -ForegroundColor Green
-                        } catch {
-                            $errorCount++
-                            Write-Warning "ERROR: Failed to remove firewall rule for port '$portNumber/$currentProtocol' (Description: $description): $($_.Exception.Message)"
-                            Write-Warning "       This might require administrator privileges or the rule is being used by another process."
-                        }
-                    } else {
-                        Write-Host "INFO: No firewall rule found to remove for port: $portNumber/$currentProtocol (Description: $description) - SKIPPED" -ForegroundColor Cyan
-                        $skippedCount++
-                    }
-                } else {
-                    # --- CREATE/UPDATE RULES MODE (Default) ---
-                    if (-not $existingRule) {
-                        Write-Host "INFO: Attempting to create firewall rule: $individualRuleName" -ForegroundColor White
-                        try {
-                            New-NetFirewallRule -DisplayName $individualRuleName `
-                                -Direction Inbound `
-                                -Protocol $currentProtocol `
-                                -LocalPort $portNumber `
-                                -Action Allow `
-                                -Profile $ruleProfiles `
-                                -Enabled $enabled `
-                                -ErrorAction Stop
-
-                            $createdCount++
-                            Write-Host "SUCCESS: Firewall rule created for port: $portNumber/$currentProtocol (Description: $description) - Enabled: $enabled" -ForegroundColor Green
-                        } catch {
-                            $errorCount++
-                            Write-Warning "ERROR: Failed to create firewall rule for port '$portNumber/$currentProtocol' (Description: $description): $($_.Exception.Message)"
-                            Write-Warning "       This might require administrator privileges or the rule already exists with a different display name."
-                        }
-                    } else {
-                        # Update existing rule's enabled state
-                        try {
-                            Set-NetFirewallRule -DisplayName $individualRuleName -Enabled $enabled -ErrorAction Stop
-                            Write-Host "INFO: Updated firewall rule state for port: $portNumber/$currentProtocol (Description: $description) - Enabled: $enabled" -ForegroundColor DarkYellow
-                            $skippedCount++
-                        } catch {
-                            $errorCount++
-                            Write-Warning "ERROR: Failed to update firewall rule state for port '$portNumber/$currentProtocol' (Description: $description): $($_.Exception.Message)"
-                        }
-                    }
+                
+                $allRulesData += @{
+                    RuleName = $individualRuleName
+                    Port = $portNumber
+                    Protocol = $currentProtocol
+                    Description = $description
+                    Enabled = $enabled
+                    OriginalSpec = $portSpec
                 }
-            } # End of foreach ($portNumber in $portsToProcess)
-        } # End of foreach ($currentProtocol in $protocolsToProcess)
-    } # End of foreach ($entry in $portsConfig)
+            }
+        }
+    }
 }
 
-# --- Auto-cleanup obsolete rules (only in create mode and if not skipped) ---
+# Process all rules in batches for better performance
+Write-Host "INFO: Processing $($allRulesData.Count) rule operations..." -ForegroundColor Cyan
+$results = Process-RulesBatch -RulesData $allRulesData -ExistingRulesHash $existingRulesHash -IsRemoveMode $RemoveRules.IsPresent
+
+# Auto-cleanup obsolete rules (only in create mode and if not skipped)
 if (-not $RemoveRules.IsPresent -and -not $SkipAutoCleanup.IsPresent -and $previousState.Count -gt 0) {
     Write-Host "`n--- Auto-Cleanup Phase: Removing obsolete rules ---" -ForegroundColor Magenta
-    Remove-ObsoleteRules -PreviousState $previousState -CurrentState $currentState
+    Remove-ObsoleteRules -PreviousState $previousState -CurrentState $currentState -ExistingRulesHash $existingRulesHash
 }
 
-# --- Save current state (only in create mode and if we have data) ---
+# Save current state (only in create mode and if we have data)
 if (-not $RemoveRules.IsPresent -and $portsConfig) {
     Save-CurrentState -PortsConfig $portsConfig
 }
 
-# --- Clear state file if in remove mode ---
+# Clear state file if in remove mode
 if ($RemoveRules.IsPresent -and (Test-Path -Path $stateFilePath)) {
     try {
         Remove-Item -Path $stateFilePath -Force -ErrorAction Stop
@@ -373,11 +463,12 @@ if ($RemoveRules.IsPresent -and (Test-Path -Path $stateFilePath)) {
 
 Write-Host "`n--- Final Summary ---" -ForegroundColor Cyan
 if ($RemoveRules.IsPresent) {
-    Write-Host "Rules Removed: $removedCount" -ForegroundColor Green
-    Write-Host "Rules Not Found (skipped removal): $skippedCount" -ForegroundColor Yellow
+    Write-Host "Rules Removed: $($results.Removed)" -ForegroundColor Green
+    Write-Host "Rules Not Found (skipped removal): $($results.Skipped)" -ForegroundColor Yellow
 } else {
-    Write-Host "Rules Created: $createdCount" -ForegroundColor Green
-    Write-Host "Rules Skipped (already existed): $skippedCount" -ForegroundColor Yellow
+    Write-Host "Rules Created: $($results.Created)" -ForegroundColor Green
+    Write-Host "Rules Updated: $($results.Updated)" -ForegroundColor Yellow
+    Write-Host "Rules Skipped (already in correct state): $($results.Skipped)" -ForegroundColor Cyan
 }
-Write-Host "Errors Encountered: $errorCount" -ForegroundColor Red
+Write-Host "Errors Encountered: $($results.Errors)" -ForegroundColor Red
 Write-Host "--- Script Finished ---" -ForegroundColor Cyan
