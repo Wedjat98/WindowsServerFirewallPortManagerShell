@@ -303,6 +303,14 @@ Write-Host ""
 # Check if the CSV file exists
 if (-not (Test-Path -Path $csvFilePath -PathType Leaf)) {
     Write-Error "Error: The CSV file '$csvFilePath' was not found."
+    
+    # Add pause before exit
+    Write-Host "`nPress any key to exit..." -ForegroundColor Yellow
+    try {
+        $null = $Host.UI.RawUI.ReadKey("NoEcho,IncludeKeyDown")
+    } catch {
+        Read-Host "Press Enter to exit"
+    }
     exit 1
 }
 
@@ -311,6 +319,14 @@ try {
     $portsConfig = Import-Csv -Path $csvFilePath -ErrorAction Stop
 } catch {
     Write-Error "Error importing CSV file '$csvFilePath': $($_.Exception.Message)`nEnsure the CSV has 'Port', 'Description', and 'Protocol' columns."
+    
+    # Add pause before exit
+    Write-Host "`nPress any key to exit..." -ForegroundColor Yellow
+    try {
+        $null = $Host.UI.RawUI.ReadKey("NoEcho,IncludeKeyDown")
+    } catch {
+        Read-Host "Press Enter to exit"
+    }
     exit 1
 }
 
@@ -323,6 +339,14 @@ if (-not $portsConfig) {
         Write-Host "Proceeding with removal of all existing rules..." -ForegroundColor Yellow
     } else {
         Write-Host "No rules to process. Exiting." -ForegroundColor Yellow
+        
+        # Add pause before exit
+        Write-Host "`nPress any key to exit..." -ForegroundColor Yellow
+        try {
+            $null = $Host.UI.RawUI.ReadKey("NoEcho,IncludeKeyDown")
+        } catch {
+            Read-Host "Press Enter to exit"
+        }
         exit 0
     }
 }
@@ -472,3 +496,13 @@ if ($RemoveRules.IsPresent) {
 }
 Write-Host "Errors Encountered: $($results.Errors)" -ForegroundColor Red
 Write-Host "--- Script Finished ---" -ForegroundColor Cyan
+
+# === 防止脚本自动关闭 ===
+Write-Host "`nScript execution completed. Press any key to close this window..." -ForegroundColor Yellow
+try {
+    # 尝试使用更直接的键盘输入方法
+    $null = $Host.UI.RawUI.ReadKey("NoEcho,IncludeKeyDown")
+} catch {
+    # 如果上面的方法失败，使用 Read-Host 作为备用方案
+    Read-Host "Press Enter to close this window"
+}
