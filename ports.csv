@@ -5,7 +5,7 @@ Port,Description,Protocol,Enabled
 3001,Napcat-2,TCP,1
 3210,lobeChat,TCP,1
 5003,Dify Plugin Daemon (dify),TCP,1
-5050,python test port,TCP,1
+
 5140-5149,koishi,TCP,1
 5300,Langbot,TCP,1
 6099,Napcat-3,TCP,1
