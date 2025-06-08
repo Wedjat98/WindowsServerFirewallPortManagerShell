@@ -87,13 +87,13 @@ firewall-manager/
 
 ```csv
 Port,Description,Protocol,Enabled
-80,Web Server HTTP,TCP,1
-443,Web Server HTTPS,TCP,1
-3306,MySQL Database,TCP,1
-27017,MongoDB Database,TCP,1
-8080-8090,Application Server Range,TCP,1
-53,DNS Server,UDP,1
-1194,OpenVPN,BOTH,1
+80,Web Server HTTP,TCP,True
+443,Web Server HTTPS,TCP,True
+3306,MySQL Database,TCP,True
+27017,MongoDB Database,TCP,True
+8080-8090,Application Server Range,TCP,True
+53,DNS Server,UDP,True
+1194,OpenVPN,BOTH,True
 ```
 
 ### 3. 以管理员身份运行
@@ -214,7 +214,7 @@ $ruleBaseName = "Your Custom Rule Name"
 | Port        | 端口号或端口范围 | `80`, `443`, `5140-5149` | ✅   |
 | Description | 规则描述         | `Nginx HTTP Server`          | ✅   |
 | Protocol    | 协议类型         | `TCP`, `UDP`, `BOTH`     | ✅   |
-| Enabled     | 规则启用状态     | `1` (启用), `0` (禁用)     | ❌   |
+| Enabled     | 规则启用状态     | `True` (启用), `False` (禁用)     | ❌   |
 
 ### 协议选项
 
@@ -229,8 +229,8 @@ $ruleBaseName = "Your Custom Rule Name"
 
 ### 启用状态
 
-- **1**：启用规则（允许流量通过）
-- **0**：禁用规则（阻止流量通过）
+- **True**：启用规则（允许流量通过）
+- **False**：禁用规则（阻止流量通过）
 - **不填**：默认启用
 
 ## 📝 使用示例
@@ -239,27 +239,27 @@ $ruleBaseName = "Your Custom Rule Name"
 
 ```csv
 Port,Description,Protocol,Enabled
-80,HTTP Server,TCP,1
-443,HTTPS Server,TCP,1
-8080,Alternative HTTP,TCP,0
+80,HTTP Server,TCP,True
+443,HTTPS Server,TCP,True
+8080,Alternative HTTP,TCP,False
 ```
 
 ### 示例2：游戏服务器配置
 
 ```csv
 Port,Description,Protocol,Enabled
-25565,Minecraft Server,TCP,1
-7777,Game Server,BOTH,1
-19132,Bedrock Server,UDP,0
+25565,Minecraft Server,TCP,True
+7777,Game Server,BOTH,True
+19132,Bedrock Server,UDP,False
 ```
 
 ### 示例3：开发环境配置
 
 ```csv
 Port,Description,Protocol,Enabled
-3000,React Dev Server,TCP,1
-5000,Flask Backend,TCP,1
-8000-8010,Microservices Range,TCP,0
+3000,React Dev Server,TCP,True
+5000,Flask Backend,TCP,True
+8000-8010,Microservices Range,TCP,False
 ```
 
 ## 🔧 命令行参数

@@ -36,7 +36,10 @@ function Save-CurrentState {
         $portSpec = $entry.Port
         $description = $entry.Description
         $protocol = $entry.Protocol.ToUpper().Trim()
-        $enabled = if ($entry.PSObject.Properties['Enabled']) { $entry.Enabled -eq '1' } else { $true }
+        $enabled = if ($entry.PSObject.Properties['Enabled']) { 
+            if ($entry.Enabled -eq '1') { [Microsoft.PowerShell.Cmdletization.GeneratedTypes.NetSecurity.Enabled]::True }
+            else { [Microsoft.PowerShell.Cmdletization.GeneratedTypes.NetSecurity.Enabled]::False }
+        } else { [Microsoft.PowerShell.Cmdletization.GeneratedTypes.NetSecurity.Enabled]::True }
 
         # Determine which protocols to process
         $protocolsToProcess = @()
@@ -222,7 +225,10 @@ if ($portsConfig) {
         $portSpec = $entry.Port # This can be a single port or a range like "2280-2290"
         $description = $entry.Description
         $protocol = $entry.Protocol.ToUpper().Trim() # Normalize protocol to uppercase
-        $enabled = if ($entry.PSObject.Properties['Enabled']) { $entry.Enabled -eq '1' } else { $true }
+        $enabled = if ($entry.PSObject.Properties['Enabled']) { 
+            if ($entry.Enabled -eq '1') { [Microsoft.PowerShell.Cmdletization.GeneratedTypes.NetSecurity.Enabled]::True }
+            else { [Microsoft.PowerShell.Cmdletization.GeneratedTypes.NetSecurity.Enabled]::False }
+        } else { [Microsoft.PowerShell.Cmdletization.GeneratedTypes.NetSecurity.Enabled]::True }
 
         # Validate protocol
         if ($protocol -notin @("TCP", "UDP", "BOTH")) {
