@@ -1,6 +1,6 @@
 # FirewallPort Manager
 
-A PowerShell script for batch management of Windows Firewall rules, supporting port rule configuration via CSV files and handling both TCP and UDP protocols.
+A PowerShell script for batch management of Windows Firewall rules, supporting port rule configuration via CSV files and handling both TCP and UDP protocols. Includes WSL2 port forwarding support.
 
 ## 🚀 Features
 
@@ -13,6 +13,8 @@ A PowerShell script for batch management of Windows Firewall rules, supporting p
 - ✅ **Error Handling**: Robust error handling and validation mechanisms
 - ✅ **Rule Control**: Enable/disable individual rules
 - ✅ **Performance Optimization**: Optimized rule processing logic for improved speed
+- ✅ **WSL2 Integration**: Automatic port forwarding to WSL2 with smart cleanup
+- ✅ **Location Awareness**: Support for Windows vs WSL service locations
 
 ## 📋 System Requirements
 
@@ -20,6 +22,7 @@ A PowerShell script for batch management of Windows Firewall rules, supporting p
 - **PowerShell**: PowerShell 5.1 or higher
 - **Permissions**: Administrator privileges (required for modifying firewall rules)
 - **Module**: NetSecurity module (built into Windows)
+- **WSL2**: Windows Subsystem for Linux 2 (optional, for port forwarding)
 
 ## 📁 File Structure
 
@@ -86,14 +89,14 @@ Place `firewall-rules.ps1` and `ports.csv` in the same directory.
 Edit the `ports.csv` file with the following format:
 
 ```csv
-Port,Description,Protocol,Enabled
-80,Web Server HTTP,TCP,True
-443,Web Server HTTPS,TCP,True
-3306,MySQL Database,TCP,True
-27017,MongoDB Database,TCP,True
-8080-8090,Application Server Range,TCP,True
-53,DNS Server,UDP,True
-1194,OpenVPN,BOTH,True
+Port,Description,Protocol,Enabled,Location,PortForwarding
+80,Web Server HTTP,TCP,True,WSL,1
+443,Web Server HTTPS,TCP,True,WSL,1
+3306,MySQL Database,TCP,True,WSL,1
+27017,MongoDB Database,TCP,True,WSL,1
+8080-8090,Application Server Range,TCP,True,WSL,1
+53,DNS Server,UDP,True,Windows,0
+1194,OpenVPN,BOTH,True,Windows,0
 ```
 
 ### 3. Run as Administrator
@@ -119,7 +122,14 @@ Right-click PowerShell and select "Run as Administrator".
 
 4. **Run Script**
    ```powershell
+   # Basic usage
    .\firewall-rules.ps1
+
+   # With WSL port forwarding
+   .\firewall-rules.ps1 -ConfigurePortForwarding
+
+   # Remove all rules
+   .\firewall-rules.ps1 -RemoveRules
    ```
 
 ### Common Commands
@@ -183,6 +193,8 @@ Right-click PowerShell and select "Run as Administrator".
 | Description | Rule description | `Nginx HTTP Server` | ✅ |
 | Protocol | Protocol type | `TCP`, `UDP`, `BOTH` | ✅ |
 | Enabled | Rule status | `True` (enabled), `False` (disabled) | ❌ |
+| Location | Service location | `WSL`, `Windows` | ❌ |
+| PortForwarding | Enable forwarding | `1` (enabled), `0` (disabled) | ❌ |
 
 ### Protocol Options
 
@@ -201,33 +213,46 @@ Right-click PowerShell and select "Run as Administrator".
 - **False**: Disable rule (block traffic)
 - **Empty**: Default to enabled
 
+### Location Options
+
+- **WSL**: Service runs in WSL2 (port forwarding enabled by default)
+- **Windows**: Service runs on Windows host (no port forwarding)
+- **Empty**: Defaults to WSL
+
+### Port Forwarding
+
+- **1**: Enable port forwarding to WSL
+- **0**: Disable port forwarding
+- **Empty**: Defaults to enabled for WSL services
+
 ## 📝 Usage Examples
 
 ### Example 1: Web Server Configuration
 
 ```csv
-Port,Description,Protocol,Enabled
-80,HTTP Server,TCP,True
-443,HTTPS Server,TCP,True
-8080,Alternative HTTP,TCP,False
+Port,Description,Protocol,Enabled,Location,PortForwarding
+80,HTTP Server,TCP,True,WSL,1
+443,HTTPS Server,TCP,True,WSL,1
+8080,Alternative HTTP,TCP,False,WSL,0
 ```
 
-### Example 2: Game Server Configuration
+### Example 2: Mixed Windows/WSL Services
 
 ```csv
-Port,Description,Protocol,Enabled
-25565,Minecraft Server,TCP,True
-7777,Game Server,BOTH,True
-19132,Bedrock Server,UDP,False
+Port,Description,Protocol,Enabled,Location,PortForwarding
+80,Web Server,TCP,True,WSL,1
+3306,MySQL,TCP,True,WSL,1
+1433,SQL Server,TCP,True,Windows,0
+53,DNS Server,UDP,True,Windows,0
 ```
 
 ### Example 3: Development Environment Configuration
 
 ```csv
-Port,Description,Protocol,Enabled
-3000,React Dev Server,TCP,True
-5000,Flask Backend,TCP,True
-8000-8010,Microservices Range,TCP,False
+Port,Description,Protocol,Enabled,Location,PortForwarding
+3000,React Dev Server,TCP,True,WSL,1
+5000,Flask Backend,TCP,True,WSL,1
+8000-8010,Microservices Range,TCP,True,WSL,1
 ```
 
 ## 🔧 Command Line Parameters
@@ -235,6 +260,9 @@ Port,Description,Protocol,Enabled
 | Parameter | Type | Description | Example |
 |-----------|------|-------------|---------|
 | `-RemoveRules` | Switch | Delete rules mode | `.\firewall-rules.ps1 -RemoveRules` |
+| `-ConfigurePortForwarding` | Switch | Enable WSL port forwarding | `.\firewall-rules.ps1 -ConfigurePortForwarding` |
+| `-SkipAutoCleanup` | Switch | Skip automatic cleanup | `.\firewall-rules.ps1 -SkipAutoCleanup` |
+| `-WSLAddress` | String | Specify WSL IP address | `.\firewall-rules.ps1 -WSLAddress "192.168.1.100"` |
 
 ## 📋 Output Log Description
 
@@ -251,6 +279,8 @@ The script displays detailed operation logs:
 --- Summary ---
 Rules Created: 15
 Rules Skipped (already existed): 2
+Port Forwards Configured: 8
+Port Forwards Skipped (Windows services): 2
 Errors Encountered: 0
 --- Script Finished ---
 ```
@@ -260,15 +290,18 @@ Errors Encountered: 0
 ### Permission Requirements
 - Must run PowerShell as **Administrator**
 - Ensure you have permission to modify Windows Firewall
+- WSL2 must be installed for port forwarding
 
 ### Security Recommendations
 - Only open necessary ports
 - Regularly review firewall rules
 - Test in a test environment before production use
+- Be cautious with port forwarding to WSL
 
 ### Network Configuration
 - Rules created by the script apply to all network profiles (Domain, Private, Public)
 - To modify scope, edit the `$ruleProfiles` variable in the script
+- Port forwarding requires WSL2 to be running
 
 ## 🐛 Troubleshooting
 
@@ -292,11 +325,19 @@ WARNING: Invalid port range '2280-' for description 'Test'
 ```
 **Solution**: Check port range format, should be `startPort-endPort`
 
+**Error 4: WSL Port Forwarding Issues**
+```
+WARNING: Could not auto-detect WSL address
+```
+**Solution**: Ensure WSL2 is running and try specifying WSL IP manually with `-WSLAddress`
+
 ### Debugging Tips
 
 1. **Check CSV File**: Ensure UTF-8 encoding and correct format
 2. **Verify Port Numbers**: Ensure ports are within valid range (1-65535)
 3. **Check Existing Rules**: Use `Get-NetFirewallRule` to view current rules
+4. **Check Port Forwards**: Use `netsh interface portproxy show all` to view forwards
+5. **Verify WSL Status**: Use `wsl --status` to check WSL2 state
 
 ## 📞 Support
 
@@ -306,6 +347,7 @@ If you encounter issues or have suggestions for improvement:
 2. Verify system requirements and permissions
 3. Check script output error messages
 4. Check Windows Event Logs
+5. Verify WSL2 configuration if using port forwarding
 
 ## 📄 License
 
@@ -313,6 +355,11 @@ This script is for learning and personal use only. Please comply with relevant l
 
 ## 🔄 Version History
 
+- **v4.0**:
+  - Added WSL2 port forwarding support
+  - Improved port forwarding cleanup
+  - Added location awareness for Windows/WSL services
+  - Enhanced error handling and logging
 - **v3.0**:
   - Added rule enable/disable functionality
   - Optimized rule processing performance
