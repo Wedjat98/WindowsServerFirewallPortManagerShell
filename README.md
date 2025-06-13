@@ -192,7 +192,7 @@ Right-click PowerShell and select "Run as Administrator".
 | Port | Port number or range | `80`, `443`, `5140-5149` | ✅ |
 | Description | Rule description | `Nginx HTTP Server` | ✅ |
 | Protocol | Protocol type | `TCP`, `UDP`, `BOTH` | ✅ |
-| Enabled | Rule status | `True` (enabled), `False` (disabled) | ❌ |
+| Enabled | Rule status | `1` (enabled), `0` (disabled) | ❌ |
 | Location | Service location | `WSL`, `Windows` | ❌ |
 | PortForwarding | Enable forwarding | `1` (enabled), `0` (disabled) | ❌ |
 
@@ -209,8 +209,8 @@ Right-click PowerShell and select "Run as Administrator".
 
 ### Enable Status
 
-- **True**: Enable rule (allow traffic)
-- **False**: Disable rule (block traffic)
+- **1**: Enable rule (allow traffic)
+- **0**: Disable rule (block traffic)
 - **Empty**: Default to enabled
 
 ### Location Options
@@ -231,28 +231,28 @@ Right-click PowerShell and select "Run as Administrator".
 
 ```csv
 Port,Description,Protocol,Enabled,Location,PortForwarding
-80,HTTP Server,TCP,True,WSL,1
-443,HTTPS Server,TCP,True,WSL,1
-8080,Alternative HTTP,TCP,False,WSL,0
+80,HTTP Server,TCP,1,WSL,1
+443,HTTPS Server,TCP,1,WSL,1
+8080,Alternative HTTP,TCP,0,WSL,0
 ```
 
 ### Example 2: Mixed Windows/WSL Services
 
 ```csv
 Port,Description,Protocol,Enabled,Location,PortForwarding
-80,Web Server,TCP,True,WSL,1
-3306,MySQL,TCP,True,WSL,1
-1433,SQL Server,TCP,True,Windows,0
-53,DNS Server,UDP,True,Windows,0
+80,Web Server,TCP,1,WSL,1
+3306,MySQL,TCP,1,WSL,1
+1433,SQL Server,TCP,1,Windows,0
+53,DNS Server,UDP,1,Windows,0
 ```
 
 ### Example 3: Development Environment Configuration
 
 ```csv
 Port,Description,Protocol,Enabled,Location,PortForwarding
-3000,React Dev Server,TCP,True,WSL,1
-5000,Flask Backend,TCP,True,WSL,1
-8000-8010,Microservices Range,TCP,True,WSL,1
+3000,React Dev Server,TCP,1,WSL,1
+5000,Flask Backend,TCP,1,WSL,1
+8000-8010,Microservices Range,TCP,1,WSL,1
 ```
 
 ## 🔧 Command Line Parameters

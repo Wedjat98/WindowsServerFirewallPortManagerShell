@@ -90,13 +90,13 @@ firewall-manager/
 
 ```csv
 Port,Description,Protocol,Enabled,Location,PortForwarding
-80,Web Server HTTP,TCP,True,WSL,1
-443,Web Server HTTPS,TCP,True,WSL,1
-3306,MySQL Database,TCP,True,WSL,1
-27017,MongoDB Database,TCP,True,WSL,1
-8080-8090,Application Server Range,TCP,True,WSL,1
-53,DNS Server,UDP,True,Windows,0
-1194,OpenVPN,BOTH,True,Windows,0
+80,Web Server HTTP,TCP,1,WSL,1
+443,Web Server HTTPS,TCP,1,WSL,1
+3306,MySQL Database,TCP,1,WSL,1
+27017,MongoDB Database,TCP,1,WSL,1
+8080-8090,Application Server Range,TCP,1,WSL,1
+53,DNS Server,UDP,1,Windows,0
+1194,OpenVPN,BOTH,1,Windows,0
 ```
 
 ### 3. 以管理员身份运行
@@ -192,7 +192,7 @@ Port,Description,Protocol,Enabled,Location,PortForwarding
 | Port | 端口号或范围 | `80`, `443`, `5140-5149` | ✅ |
 | Description | 规则描述 | `Nginx HTTP Server` | ✅ |
 | Protocol | 协议类型 | `TCP`, `UDP`, `BOTH` | ✅ |
-| Enabled | 规则状态 | `True` (启用), `False` (禁用) | ❌ |
+| Enabled | 规则状态 | `1` (启用), `0` (禁用) | ❌ |
 | Location | 服务位置 | `WSL`, `Windows` | ❌ |
 | PortForwarding | 启用转发 | `1` (启用), `0` (禁用) | ❌ |
 
@@ -209,8 +209,8 @@ Port,Description,Protocol,Enabled,Location,PortForwarding
 
 ### 启用状态
 
-- **True**: 启用规则（允许流量）
-- **False**: 禁用规则（阻止流量）
+- **1**: 启用规则（允许流量）
+- **0**: 禁用规则（阻止流量）
 - **空**: 默认启用
 
 ### 位置选项
@@ -231,28 +231,28 @@ Port,Description,Protocol,Enabled,Location,PortForwarding
 
 ```csv
 Port,Description,Protocol,Enabled,Location,PortForwarding
-80,HTTP Server,TCP,True,WSL,1
-443,HTTPS Server,TCP,True,WSL,1
-8080,Alternative HTTP,TCP,False,WSL,0
+80,HTTP Server,TCP,1,WSL,1
+443,HTTPS Server,TCP,1,WSL,1
+8080,Alternative HTTP,TCP,0,WSL,0
 ```
 
 ### 示例2：混合Windows/WSL服务
 
 ```csv
 Port,Description,Protocol,Enabled,Location,PortForwarding
-80,Web Server,TCP,True,WSL,1
-3306,MySQL,TCP,True,WSL,1
-1433,SQL Server,TCP,True,Windows,0
-53,DNS Server,UDP,True,Windows,0
+80,Web Server,TCP,1,WSL,1
+3306,MySQL,TCP,1,WSL,1
+1433,SQL Server,TCP,1,Windows,0
+53,DNS Server,UDP,1,Windows,0
 ```
 
 ### 示例3：开发环境配置
 
 ```csv
 Port,Description,Protocol,Enabled,Location,PortForwarding
-3000,React Dev Server,TCP,True,WSL,1
-5000,Flask Backend,TCP,True,WSL,1
-8000-8010,Microservices Range,TCP,True,WSL,1
+3000,React Dev Server,TCP,1,WSL,1
+5000,Flask Backend,TCP,1,WSL,1
+8000-8010,Microservices Range,TCP,1,WSL,1
 ```
 
 ## 🔧 命令行参数
