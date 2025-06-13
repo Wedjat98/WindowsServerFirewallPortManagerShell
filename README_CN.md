@@ -1,6 +1,6 @@
 # FirewallPort Manager
 
-一个用于批量管理Windows防火墙规则的PowerShell脚本，支持通过CSV文件配置端口规则，可同时处理TCP和UDP协议。
+一个用于批量管理Windows防火墙规则的PowerShell脚本，支持通过CSV文件配置端口规则，可同时处理TCP和UDP协议。包含WSL2端口转发支持。
 
 ## 🚀 功能特性
 
@@ -13,6 +13,8 @@
 - ✅ **错误处理**：完善的错误处理和验证机制
 - ✅ **规则控制**：支持启用/禁用单个规则
 - ✅ **性能优化**：优化的规则处理逻辑，提升执行速度
+- ✅ **WSL2集成**：自动端口转发到WSL2，支持智能清理
+- ✅ **位置感知**：支持Windows和WSL服务位置区分
 
 ## 📋 系统要求
 
@@ -20,6 +22,7 @@
 - **PowerShell**：PowerShell 5.1 或更高版本
 - **权限**：管理员权限（修改防火墙规则需要）
 - **模块**：NetSecurity 模块（Windows内置）
+- **WSL2**：Windows Subsystem for Linux 2（可选，用于端口转发）
 
 ## 📁 文件结构
 
@@ -86,14 +89,14 @@ firewall-manager/
 编辑 `ports.csv` 文件，按照以下格式配置需要管理的端口：
 
 ```csv
-Port,Description,Protocol,Enabled
-80,Web Server HTTP,TCP,True
-443,Web Server HTTPS,TCP,True
-3306,MySQL Database,TCP,True
-27017,MongoDB Database,TCP,True
-8080-8090,Application Server Range,TCP,True
-53,DNS Server,UDP,True
-1194,OpenVPN,BOTH,True
+Port,Description,Protocol,Enabled,Location,PortForwarding
+80,Web Server HTTP,TCP,True,WSL,1
+443,Web Server HTTPS,TCP,True,WSL,1
+3306,MySQL Database,TCP,True,WSL,1
+27017,MongoDB Database,TCP,True,WSL,1
+8080-8090,Application Server Range,TCP,True,WSL,1
+53,DNS Server,UDP,True,Windows,0
+1194,OpenVPN,BOTH,True,Windows,0
 ```
 
 ### 3. 以管理员身份运行
@@ -119,7 +122,14 @@ Port,Description,Protocol,Enabled
 
 4. **运行脚本**
    ```powershell
+   # 基本用法
    .\firewall-rules.ps1
+
+   # 启用WSL端口转发
+   .\firewall-rules.ps1 -ConfigurePortForwarding
+
+   # 删除所有规则
+   .\firewall-rules.ps1 -RemoveRules
    ```
 
 ### 常用命令
@@ -152,82 +162,97 @@ Port,Description,Protocol,Enabled
    Get-NetFirewallRule | Where-Object {$_.DisplayName -like "*Your Rule Name*"}
    ```
 
-3. **检查脚本执行权限**
+3. **检查脚本执行策略**
    ```powershell
    Get-ExecutionPolicy
    ```
 
-### 常见问题解决
+### 常见问题
 
-1. **如果遇到"无法加载文件"错误**
-   - 检查文件路径是否正确
-   - 确认文件编码为 UTF-8
-   - 验证文件权限
+1. **如果出现"无法加载文件"错误**
+   - 检查文件路径
+   - 验证UTF-8编码
+   - 检查文件权限
 
-2. **如果遇到"执行策略限制"错误**
+2. **如果出现"执行策略限制"错误**
    ```powershell
    Set-ExecutionPolicy -ExecutionPolicy RemoteSigned -Scope CurrentUser
    ```
 
-3. **如果需要查看详细错误信息**
+3. **查看详细错误信息**
    ```powershell
    $ErrorActionPreference = "Continue"
    .\firewall-rules.ps1
    ```
 
-## 📊 CSV文件格式说明
+## 📊 CSV文件格式
 
-| 列名 | 描述 | 示例 | 必填 |
-|------|------|------|------|
-| Port | 端口号或端口范围 | `80`, `443`, `5140-5149` | ✅ |
+| 列名 | 描述 | 示例 | 是否必需 |
+|------|------|------|----------|
+| Port | 端口号或范围 | `80`, `443`, `5140-5149` | ✅ |
 | Description | 规则描述 | `Nginx HTTP Server` | ✅ |
 | Protocol | 协议类型 | `TCP`, `UDP`, `BOTH` | ✅ |
-| Enabled | 规则启用状态 | `True` (启用), `False` (禁用) | ❌ |
+| Enabled | 规则状态 | `True` (启用), `False` (禁用) | ❌ |
+| Location | 服务位置 | `WSL`, `Windows` | ❌ |
+| PortForwarding | 启用转发 | `1` (启用), `0` (禁用) | ❌ |
 
 ### 协议选项
 
-- **TCP**：仅创建TCP协议规则
-- **UDP**：仅创建UDP协议规则  
-- **BOTH**：同时创建TCP和UDP协议规则
+- **TCP**: 仅创建TCP协议规则
+- **UDP**: 仅创建UDP协议规则
+- **BOTH**: 同时创建TCP和UDP协议规则
 
 ### 端口格式
 
-- **单个端口**：`80`, `443`, `3000`
-- **端口范围**：`5000-5050`
+- **单个端口**: `80`, `443`, `3000`
+- **端口范围**: `5000-5050`
 
 ### 启用状态
 
-- **True**：启用规则（允许流量通过）
-- **False**：禁用规则（阻止流量通过）
-- **不填**：默认启用
+- **True**: 启用规则（允许流量）
+- **False**: 禁用规则（阻止流量）
+- **空**: 默认启用
+
+### 位置选项
+
+- **WSL**: 服务运行在WSL2中（默认启用端口转发）
+- **Windows**: 服务运行在Windows主机上（不进行端口转发）
+- **空**: 默认为WSL
+
+### 端口转发
+
+- **1**: 启用端口转发到WSL
+- **0**: 禁用端口转发
+- **空**: 对于WSL服务默认为启用
 
 ## 📝 使用示例
 
 ### 示例1：Web服务器配置
 
 ```csv
-Port,Description,Protocol,Enabled
-80,HTTP Server,TCP,True
-443,HTTPS Server,TCP,True
-8080,Alternative HTTP,TCP,False
+Port,Description,Protocol,Enabled,Location,PortForwarding
+80,HTTP Server,TCP,True,WSL,1
+443,HTTPS Server,TCP,True,WSL,1
+8080,Alternative HTTP,TCP,False,WSL,0
 ```
 
-### 示例2：游戏服务器配置
+### 示例2：混合Windows/WSL服务
 
 ```csv
-Port,Description,Protocol,Enabled
-25565,Minecraft Server,TCP,True
-7777,Game Server,BOTH,True
-19132,Bedrock Server,UDP,False
+Port,Description,Protocol,Enabled,Location,PortForwarding
+80,Web Server,TCP,True,WSL,1
+3306,MySQL,TCP,True,WSL,1
+1433,SQL Server,TCP,True,Windows,0
+53,DNS Server,UDP,True,Windows,0
 ```
 
 ### 示例3：开发环境配置
 
 ```csv
-Port,Description,Protocol,Enabled
-3000,React Dev Server,TCP,True
-5000,Flask Backend,TCP,True
-8000-8010,Microservices Range,TCP,False
+Port,Description,Protocol,Enabled,Location,PortForwarding
+3000,React Dev Server,TCP,True,WSL,1
+5000,Flask Backend,TCP,True,WSL,1
+8000-8010,Microservices Range,TCP,True,WSL,1
 ```
 
 ## 🔧 命令行参数
@@ -235,6 +260,9 @@ Port,Description,Protocol,Enabled
 | 参数 | 类型 | 描述 | 示例 |
 |------|------|------|------|
 | `-RemoveRules` | Switch | 删除规则模式 | `.\firewall-rules.ps1 -RemoveRules` |
+| `-ConfigurePortForwarding` | Switch | 启用WSL端口转发 | `.\firewall-rules.ps1 -ConfigurePortForwarding` |
+| `-SkipAutoCleanup` | Switch | 跳过自动清理 | `.\firewall-rules.ps1 -SkipAutoCleanup` |
+| `-WSLAddress` | String | 指定WSL IP地址 | `.\firewall-rules.ps1 -WSLAddress "192.168.1.100"` |
 
 ## 📋 输出日志说明
 
@@ -251,6 +279,8 @@ Port,Description,Protocol,Enabled
 --- Summary ---
 Rules Created: 15
 Rules Skipped (already existed): 2
+Port Forwards Configured: 8
+Port Forwards Skipped (Windows services): 2
 Errors Encountered: 0
 --- Script Finished ---
 ```
@@ -260,15 +290,18 @@ Errors Encountered: 0
 ### 权限要求
 - 必须以**管理员身份**运行PowerShell
 - 确保具有修改Windows防火墙的权限
+- 使用端口转发功能需要安装WSL2
 
 ### 安全建议
 - 仅开放必要的端口
 - 定期审查防火墙规则
 - 在生产环境使用前先在测试环境验证
+- 谨慎使用WSL端口转发
 
 ### 网络配置
 - 脚本创建的规则适用于所有网络配置文件（Domain, Private, Public）
 - 如需修改适用范围，可编辑脚本中的 `$ruleProfiles` 变量
+- 端口转发需要WSL2处于运行状态
 
 ## 🐛 故障排除
 
@@ -292,11 +325,19 @@ WARNING: Invalid port range '2280-' for description 'Test'
 ```
 **解决方案**：检查端口范围格式，应为 `startPort-endPort`
 
+**错误4：WSL端口转发问题**
+```
+WARNING: Could not auto-detect WSL address
+```
+**解决方案**：确保WSL2正在运行，或使用 `-WSLAddress` 手动指定WSL IP地址
+
 ### 调试建议
 
 1. **检查CSV文件**：确保文件编码为UTF-8，格式正确
 2. **验证端口号**：确保端口号在有效范围内（1-65535）
 3. **检查现有规则**：使用 `Get-NetFirewallRule` 查看现有规则
+4. **检查端口转发**：使用 `netsh interface portproxy show all` 查看转发规则
+5. **验证WSL状态**：使用 `wsl --status` 检查WSL2状态
 
 ## 📞 支持
 
@@ -306,17 +347,23 @@ WARNING: Invalid port range '2280-' for description 'Test'
 2. 验证系统要求和权限
 3. 查看脚本输出的错误信息
 4. 检查Windows事件日志
+5. 如果使用端口转发，验证WSL2配置
 
 ## 📄 许可证
 
-本脚本仅供学习和个人使用。使用时请遵守相关法律法规和企业安全政策。
+本脚本仅供学习和个人使用。使用时请遵守相关法律和企业安全政策。
 
 ## 🔄 版本历史
 
-- **v3.0**：
+- **v4.0**:
+  - 添加WSL2端口转发支持
+  - 改进端口转发清理功能
+  - 添加Windows/WSL服务位置感知
+  - 增强错误处理和日志记录
+- **v3.0**:
   - 添加规则启用/禁用功能
   - 优化规则处理性能
   - 改进批量操作效率
-  - 减少内存占用
-- **v2.0**：添加TCP/UDP协议支持，改进错误处理
-- **v1.0**：基础版本，仅支持TCP协议 
+  - 减少内存使用
+- **v2.0**: 添加TCP/UDP协议支持，改进错误处理
+- **v1.0**: 基础版本，仅支持TCP协议 
