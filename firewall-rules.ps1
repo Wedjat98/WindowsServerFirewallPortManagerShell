@@ -69,8 +69,16 @@ function Get-ExistingPortForwards {
         $output = netsh interface portproxy show all 2>$null
         
         if ($output) {
+            $inDataSection = $false
             foreach ($line in $output) {
-                if ($line -match 'Listen on ipv4:\s*(\S+):(\d+)\s*Connect to\s*(\S+):(\d+)') {
+                # Skip header lines until we reach the data section
+                if ($line -match '^-+\s+-+\s+-+\s+-+') {
+                    $inDataSection = $true
+                    continue
+                }
+                
+                # Parse data lines (format: Address Port Address Port)
+                if ($inDataSection -and $line -match '^\s*(\S+)\s+(\d+)\s+(\S+)\s+(\d+)\s*$') {
                     $existingForwards += @{
                         ListenAddress = $matches[1]
                         ListenPort = [int]$matches[2]
@@ -585,6 +593,11 @@ if ($RemoveRules.IsPresent) {
             Write-Warning "WARNING: No forwarding address specified in CSV and could not auto-detect WSL address. Port forwarding will be skipped."
         }
         
+        # Initialize arrays for processing
+        $allRulesData = @()
+        $currentState = @()
+        $portsForForwarding = @()
+        
         # Process each port configuration
         foreach ($portConfig in $portsConfig) {
             # Validate CSV column presence
@@ -652,13 +665,11 @@ if ($RemoveRules.IsPresent) {
                     # Collect port info for port forwarding (only TCP ports that need forwarding)
                     if ($currentProtocol -eq "TCP" -and $forwardAddress) {
                         $portForwarding = if ($portConfig.PSObject.Properties['PortForwarding']) { $portConfig.PortForwarding } else { "1" }
-                        $location = if ($portConfig.PSObject.Properties['Location']) { $portConfig.Location } else { "WSL" }
                         
-                        $portsConfig += @{
+                        $portsForForwarding += @{
                             Port = $portNumber
                             Description = $description
                             PortForwarding = $portForwarding
-                            Location = $location
                         }
                     }
                     
@@ -687,13 +698,34 @@ if ($RemoveRules.IsPresent) {
             }
         }
         
+        # Process all rules in batches for better performance
+        Write-Host "INFO: Processing $($allRulesData.Count) rule operations..." -ForegroundColor Cyan
+        $existingRules = Get-AllExistingRules -RuleBaseName $ruleBaseName
+        $results = Process-RulesBatch -RulesData $allRulesData -ExistingRulesHash $existingRules -IsRemoveMode $false
+        
+        # Auto-cleanup obsolete rules (only in create mode and if not skipped)
+        if (-not $SkipAutoCleanup.IsPresent) {
+            $previousState = Get-PreviousState
+            if ($previousState.Count -gt 0) {
+                Write-Host "`n--- Auto-Cleanup Phase: Removing obsolete rules ---" -ForegroundColor Magenta
+                Remove-ObsoleteRules -PreviousState $previousState -CurrentState $currentState -ExistingRulesHash $existingRules
+            }
+        }
+        
         # Configure port forwarding
-        if ($forwardAddress) {
-            Configure-PortForwarding -Ports $portsConfig -WSLAddress $forwardAddress
+        if ($forwardAddress -and $portsForForwarding.Count -gt 0) {
+            Configure-PortForwarding -Ports $portsForForwarding -WSLAddress $forwardAddress
         }
         
         # Save current state
         Save-CurrentState -PortsConfig $portsConfig
+        
+        Write-Host "`n--- Final Summary ---" -ForegroundColor Cyan
+        Write-Host "Rules Created: $($results.Created)" -ForegroundColor Green
+        Write-Host "Rules Updated: $($results.Updated)" -ForegroundColor Yellow
+        Write-Host "Rules Skipped (already in correct state): $($results.Skipped)" -ForegroundColor Cyan
+        Write-Host "Errors Encountered: $($results.Errors)" -ForegroundColor Red
+        Write-Host "--- Script Finished ---" -ForegroundColor Cyan
         
     } catch {
         Write-Error "ERROR: Failed to process CSV file: $($_.Exception.Message)"
