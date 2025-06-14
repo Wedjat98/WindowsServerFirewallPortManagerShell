@@ -2,9 +2,7 @@
 
 param (
     [switch]$RemoveRules, # Optional switch to remove rules instead of creating them
-    [switch]$SkipAutoCleanup, # Optional switch to skip automatic cleanup of removed ports
-    [switch]$ConfigurePortForwarding, # Optional switch to configure port forwarding to WSL
-    [string]$WSLAddress = "" # WSL IP address, will be auto-detected if not provided
+    [switch]$SkipAutoCleanup # Optional switch to skip automatic cleanup of removed ports
 )
 
 # --- Configuration ---
@@ -26,13 +24,6 @@ $ruleProfiles = "Domain", "Private", "Public"
 # --- Helper Functions ---
 
 function Get-WSLAddress {
-    param($ProvidedAddress)
-    
-    if ($ProvidedAddress) {
-        Write-Host "INFO: Using provided WSL address: $ProvidedAddress" -ForegroundColor Cyan
-        return $ProvidedAddress
-    }
-    
     Write-Host "INFO: Auto-detecting WSL address..." -ForegroundColor Cyan
     
     try {
@@ -137,35 +128,47 @@ function Configure-PortForwarding {
     # First, remove all existing port forwards
     Remove-AllPortForwards
     
+    # Wait a moment to ensure all rules are removed
+    Start-Sleep -Seconds 1
+    
     $successCount = 0
     $errorCount = 0
     $skippedCount = 0
-    $windowsPorts = @()
+    $excludedPorts = @()
     
-    # First pass: collect Windows ports to ensure we don't create forwards for them
+    # Load previous state to check for changes
+    $previousState = Get-PreviousState
+    $previousPortForwards = @{}
+    foreach ($state in $previousState) {
+        $key = "$($state.Port)/$($state.Protocol)"
+        $previousPortForwards[$key] = $state.PortForwarding
+    }
+    
+    # First pass: collect ports that don't need forwarding
     foreach ($portConfig in $Ports) {
         $port = $portConfig.Port
-        $location = $portConfig.Location
+        $needsForwarding = $portConfig.PortForwarding
         
-        if ($location -eq "Windows") {
-            $windowsPorts += $port
-            Write-Host "INFO: Port $port runs on Windows, will be excluded from forwarding ($($portConfig.Description))" -ForegroundColor Yellow
+        if ($needsForwarding -eq "0") {
+            $excludedPorts += $port
+            Write-Host "INFO: Port $port will be excluded from forwarding ($($portConfig.Description)) - PortForwarding=0" -ForegroundColor Yellow
         }
     }
     
     # Second pass: configure port forwards
     foreach ($portConfig in $Ports) {
         $port = $portConfig.Port
-        $needsForwarding = $portConfig.PortForwarding
-        $location = $portConfig.Location
         
-        # Skip if port is marked as Windows location or doesn't need forwarding
-        if ($port -in $windowsPorts -or $needsForwarding -eq "0") {
+        # Skip if port doesn't need forwarding
+        if ($port -in $excludedPorts) {
             $skippedCount++
             continue
         }
         
         try {
+            # First ensure any existing forward for this port is removed
+            netsh interface portproxy delete v4tov4 listenport=$port listenaddress=0.0.0.0 2>$null
+            
             # Add new port proxy
             $result = netsh interface portproxy add v4tov4 listenport=$port listenaddress=0.0.0.0 connectport=$port connectaddress=$WSLAddress
             
@@ -184,7 +187,7 @@ function Configure-PortForwarding {
     
     Write-Host "`n--- Port Forwarding Summary ---" -ForegroundColor Magenta
     Write-Host "Port Forwards Configured: $successCount" -ForegroundColor Green
-    Write-Host "Port Forwards Skipped (Windows services): $skippedCount" -ForegroundColor Yellow
+    Write-Host "Port Forwards Skipped (PortForwarding=0): $skippedCount" -ForegroundColor Yellow
     Write-Host "Port Forward Errors: $errorCount" -ForegroundColor Red
     
     if ($successCount -gt 0) {
@@ -276,6 +279,7 @@ function Save-CurrentState {
             if ($entry.Enabled -eq '1') { [Microsoft.PowerShell.Cmdletization.GeneratedTypes.NetSecurity.Enabled]::True }
             else { [Microsoft.PowerShell.Cmdletization.GeneratedTypes.NetSecurity.Enabled]::False }
         } else { [Microsoft.PowerShell.Cmdletization.GeneratedTypes.NetSecurity.Enabled]::True }
+        $portForwarding = if ($entry.PSObject.Properties['PortForwarding']) { $entry.PortForwarding } else { "1" }
 
         # Determine which protocols to process
         $protocolsToProcess = @()
@@ -307,6 +311,7 @@ function Save-CurrentState {
                     Description = $description
                     OriginalSpec = $portSpec
                     Enabled = $enabled
+                    PortForwarding = $portForwarding
                 }
             }
         }
@@ -321,12 +326,13 @@ function Save-CurrentState {
 }
 
 function Get-PreviousState {
-    if (Test-Path -Path $stateFilePath -PathType Leaf) {
+    if (Test-Path $stateFilePath) {
         try {
-            $stateContent = Get-Content -Path $stateFilePath -Raw -ErrorAction Stop
-            return ($stateContent | ConvertFrom-Json)
+            $stateData = Get-Content -Path $stateFilePath -Raw | ConvertFrom-Json
+            Write-Host "INFO: Loaded previous state with $($stateData.Count) port-protocol combinations" -ForegroundColor Cyan
+            return $stateData
         } catch {
-            Write-Warning "WARNING: Failed to read previous state file: $($_.Exception.Message)"
+            Write-Warning "WARNING: Failed to load previous state: $($_.Exception.Message)"
             return @()
         }
     }
@@ -491,255 +497,209 @@ function Process-RulesBatch {
 
 # --- Main Script Logic ---
 
-Write-Host "--- Starting Enhanced Firewall + Port Forwarding Management ---" -ForegroundColor Cyan
+Write-Host "--- Starting Enhanced Firewall + Port Forwarding Management ---" -ForegroundColor Magenta
 Write-Host "CSV File Path: $csvFilePath" -ForegroundColor Cyan
 Write-Host "State File Path: $stateFilePath" -ForegroundColor Cyan
 Write-Host "Rule Base Name: $ruleBaseName" -ForegroundColor Cyan
 
 if ($RemoveRules.IsPresent) {
-    Write-Host "Mode: REMOVING ALL RULES (triggered by -RemoveRules switch)" -ForegroundColor Red
-} else {
-    Write-Host "Mode: CREATING/UPDATING RULES" -ForegroundColor Green
-    Write-Host "Rule Profiles: $($ruleProfiles -join ', ')" -ForegroundColor Cyan
-    if ($SkipAutoCleanup.IsPresent) {
-        Write-Host "Auto-Cleanup: DISABLED (triggered by -SkipAutoCleanup switch)" -ForegroundColor Yellow
-    } else {
-        Write-Host "Auto-Cleanup: ENABLED (will remove rules for ports deleted from CSV)" -ForegroundColor Green
-    }
-}
-
-if ($ConfigurePortForwarding.IsPresent) {
-    Write-Host "Port Forwarding: ENABLED" -ForegroundColor Green
-} else {
-    Write-Host "Port Forwarding: DISABLED (use -ConfigurePortForwarding to enable)" -ForegroundColor Yellow
-}
-Write-Host ""
-
-# Check if the CSV file exists
-if (-not (Test-Path -Path $csvFilePath -PathType Leaf)) {
-    Write-Error "Error: The CSV file '$csvFilePath' was not found."
+    Write-Host "Mode: REMOVING ALL RULES (triggered by -RemoveRules switch)" -ForegroundColor Yellow
     
-    # Add pause before exit
-    Write-Host "`nPress any key to exit..." -ForegroundColor Yellow
-    try {
-        $null = $Host.UI.RawUI.ReadKey("NoEcho,IncludeKeyDown")
-    } catch {
-        Read-Host "Press Enter to exit"
-    }
-    exit 1
-}
-
-# Import the CSV file
-try {
+    # First remove all port forwarding rules
+    Write-Host "`n--- Removing Port Forwarding Rules ---" -ForegroundColor Magenta
+    Remove-AllPortForwards
+    
+    # Then remove firewall rules
+    Write-Host "`n--- Removing Firewall Rules ---" -ForegroundColor Magenta
+    $existingRules = Get-AllExistingRules -RuleBaseName $ruleBaseName
+    $removedCount = 0
+    $notFoundCount = 0
+    $errorCount = 0
+    
+    Write-Host "INFO: Loading existing firewall rules (this may take a moment)..." -ForegroundColor Cyan
+    Write-Host "INFO: Found $($existingRules.Count) existing rules matching pattern '$ruleBaseName*'" -ForegroundColor Cyan
+    
+    # Load CSV to get descriptions
     $portsConfig = Import-Csv -Path $csvFilePath -ErrorAction Stop
-} catch {
-    Write-Error "Error importing CSV file '$csvFilePath': $($_.Exception.Message)`nEnsure the CSV has 'Port', 'Description', and 'Protocol' columns."
-    
-    # Add pause before exit
-    Write-Host "`nPress any key to exit..." -ForegroundColor Yellow
-    try {
-        $null = $Host.UI.RawUI.ReadKey("NoEcho,IncludeKeyDown")
-    } catch {
-        Read-Host "Press Enter to exit"
-    }
-    exit 1
-}
-
-# Check if the CSV file is empty
-if (-not $portsConfig) {
-    Write-Warning "Warning: The CSV file '$csvFilePath' is empty or contains no data."
-    
-    # If in remove mode or CSV is empty, we might want to clean up all existing rules
-    if ($RemoveRules.IsPresent) {
-        Write-Host "Proceeding with removal of all existing rules..." -ForegroundColor Yellow
-    } else {
-        Write-Host "No rules to process. Exiting." -ForegroundColor Yellow
-        
-        # Add pause before exit
-        Write-Host "`nPress any key to exit..." -ForegroundColor Yellow
-        try {
-            $null = $Host.UI.RawUI.ReadKey("NoEcho,IncludeKeyDown")
-        } catch {
-            Read-Host "Press Enter to exit"
-        }
-        exit 0
-    }
-}
-
-# Detect WSL address if port forwarding is enabled
-$detectedWSLAddress = $null
-if ($ConfigurePortForwarding.IsPresent) {
-    $detectedWSLAddress = Get-WSLAddress -ProvidedAddress $WSLAddress
-}
-
-# Load existing rules once at the beginning for performance
-$existingRulesHash = Get-AllExistingRules -RuleBaseName $ruleBaseName
-
-# Load previous state for comparison (only if not in RemoveRules mode)
-$previousState = @()
-$currentState = @()
-
-if (-not $RemoveRules.IsPresent -and -not $SkipAutoCleanup.IsPresent) {
-    $previousState = Get-PreviousState
-    Write-Host "INFO: Loaded previous state with $($previousState.Count) port-protocol combinations" -ForegroundColor Cyan
-}
-
-# Prepare all rule data for batch processing
-$allRulesData = @()
-$uniquePorts = @()
-
-# Process current CSV configuration
-if ($portsConfig) {
     Write-Host "INFO: Processing CSV configuration..." -ForegroundColor Cyan
+    Write-Host "INFO: Processing $($portsConfig.Count) rule operations..." -ForegroundColor Cyan
+    Write-Host "INFO: Removing $($existingRules.Count) firewall rules..." -ForegroundColor Cyan
     
-    # Loop through each port entry/range in the CSV
-    foreach ($entry in $portsConfig) {
-        # Validate CSV column presence
-        if (-not $entry.PSObject.Properties['Port']) {
-            Write-Warning "Skipping entry: Missing 'Port' column in CSV row: $($entry | ConvertTo-Json -Compress)"
-            continue
-        }
-        if (-not $entry.PSObject.Properties['Description']) {
-            Write-Warning "Skipping entry: Missing 'Description' column in CSV row: $($entry | ConvertTo-Json -Compress)"
-            continue
-        }
-        if (-not $entry.PSObject.Properties['Protocol']) {
-            Write-Warning "Skipping entry: Missing 'Protocol' column in CSV row: $($entry | ConvertTo-Json -Compress)"
-            continue
-        }
-
-        $portSpec = $entry.Port
-        $description = $entry.Description
-        $protocol = $entry.Protocol.ToUpper().Trim()
-        $enabled = if ($entry.PSObject.Properties['Enabled']) { 
-            if ($entry.Enabled -eq '1') { [Microsoft.PowerShell.Cmdletization.GeneratedTypes.NetSecurity.Enabled]::True }
-            else { [Microsoft.PowerShell.Cmdletization.GeneratedTypes.NetSecurity.Enabled]::False }
-        } else { [Microsoft.PowerShell.Cmdletization.GeneratedTypes.NetSecurity.Enabled]::True }
-
-        # Validate protocol
-        if ($protocol -notin @("TCP", "UDP", "BOTH")) {
-            Write-Warning "Skipping entry: Invalid protocol '$($entry.Protocol)' for port '$portSpec'. Must be 'TCP', 'UDP', or 'BOTH'."
-            continue
-        }
-
-        # Determine which protocols to process
-        $protocolsToProcess = @()
-        switch ($protocol) {
-            "TCP" { $protocolsToProcess += "TCP" }
-            "UDP" { $protocolsToProcess += "UDP" }
-            "BOTH" { $protocolsToProcess += @("TCP", "UDP") }
-        }
-
-        # Parse the port specification
-        $portsToProcess = @()
-
-        if ($portSpec -match '^\d+-\d+$') {
-            $rangeParts = $portSpec.Split('-')
-            $startPort = [int]$rangeParts[0]
-            $endPort = [int]$rangeParts[1]
-
-            if ($startPort -gt $endPort) {
-                Write-Warning "Skipping entry: Invalid port range '$portSpec' for description '$description'. Start port cannot be greater than end port."
-                continue
-            }
-
-            for ($i = $startPort; $i -le $endPort; $i++) {
-                $portsToProcess += $i
-            }
-        } elseif ($portSpec -match '^\d+$') {
-            $portsToProcess += [int]$portSpec
-        } else {
-            Write-Warning "Skipping entry: Invalid port specification '$portSpec' for description '$description'. Must be a single port or a range (e.g., '80' or '2280-2290')."
-            continue
-        }
-
-        # Create rule data for each protocol and port combination
-        foreach ($currentProtocol in $protocolsToProcess) {
-            foreach ($portNumber in $portsToProcess) {
-                # Collect port info for port forwarding (only TCP ports that need forwarding)
-                if ($currentProtocol -eq "TCP" -and $ConfigurePortForwarding.IsPresent) {
-                    $portForwarding = if ($entry.PSObject.Properties['PortForwarding']) { $entry.PortForwarding } else { "1" }
-                    $location = if ($entry.PSObject.Properties['Location']) { $entry.Location } else { "WSL" }
-                    
-                    $uniquePorts += @{
-                        Port = $portNumber
-                        Description = $description
-                        PortForwarding = $portForwarding
-                        Location = $location
-                    }
-                }
-                
-                # Add to current state for comparison
-                if (-not $RemoveRules.IsPresent) {
-                    $currentState += @{
-                        Port = $portNumber
-                        Protocol = $currentProtocol
-                        Description = $description
-                        OriginalSpec = $portSpec
-                        Enabled = $enabled
-                    }
-                }
-
-                $individualRuleName = "$ruleBaseName - $description (Port $portNumber/$currentProtocol)"
-                
-                $allRulesData += @{
-                    RuleName = $individualRuleName
-                    Port = $portNumber
-                    Protocol = $currentProtocol
-                    Description = $description
-                    Enabled = $enabled
-                    OriginalSpec = $portSpec
-                }
+    foreach ($rule in $existingRules) {
+        try {
+            Remove-NetFirewallRule -Name $rule.Name -ErrorAction Stop
+            $removedCount++
+            Write-Host "SUCCESS: Firewall rule removed for port: $($rule.Port)/$($rule.Protocol) (Description: $($rule.Description))" -ForegroundColor Green
+        } catch {
+            if ($_.Exception.Message -like "*No MSFT_NetFirewallRule objects found*") {
+                $notFoundCount++
+            } else {
+                $errorCount++
+                Write-Warning "ERROR: Failed to remove rule for port $($rule.Port): $($_.Exception.Message)"
             }
         }
     }
-}
-
-# Process all rules in batches for better performance
-Write-Host "INFO: Processing $($allRulesData.Count) rule operations..." -ForegroundColor Cyan
-$results = Process-RulesBatch -RulesData $allRulesData -ExistingRulesHash $existingRulesHash -IsRemoveMode $RemoveRules.IsPresent
-
-# Auto-cleanup obsolete rules (only in create mode and if not skipped)
-if (-not $RemoveRules.IsPresent -and -not $SkipAutoCleanup.IsPresent -and $previousState.Count -gt 0) {
-    Write-Host "`n--- Auto-Cleanup Phase: Removing obsolete rules ---" -ForegroundColor Magenta
-    Remove-ObsoleteRules -PreviousState $previousState -CurrentState $currentState -ExistingRulesHash $existingRulesHash
-}
-
-# Configure or remove port forwarding
-if ($ConfigurePortForwarding.IsPresent -and $uniquePorts.Count -gt 0) {
-    if ($RemoveRules.IsPresent) {
-        Remove-PortForwarding -Ports $uniquePorts
-    } else {
-        Configure-PortForwarding -Ports $uniquePorts -WSLAddress $detectedWSLAddress
-    }
-}
-
-# Save current state (only in create mode and if we have data)
-if (-not $RemoveRules.IsPresent -and $portsConfig) {
-    Save-CurrentState -PortsConfig $portsConfig
-}
-
-# Clear state file if in remove mode
-if ($RemoveRules.IsPresent -and (Test-Path -Path $stateFilePath)) {
+    
+    # Clear state file
     try {
-        Remove-Item -Path $stateFilePath -Force -ErrorAction Stop
-        Write-Host "INFO: State file cleared after rule removal" -ForegroundColor Cyan
+        if (Test-Path $stateFilePath) {
+            Remove-Item $stateFilePath -Force
+            Write-Host "INFO: State file cleared after rule removal" -ForegroundColor Cyan
+        }
     } catch {
         Write-Warning "WARNING: Failed to clear state file: $($_.Exception.Message)"
     }
-}
-
-Write-Host "`n--- Final Summary ---" -ForegroundColor Cyan
-if ($RemoveRules.IsPresent) {
-    Write-Host "Rules Removed: $($results.Removed)" -ForegroundColor Green
-    Write-Host "Rules Not Found (skipped removal): $($results.Skipped)" -ForegroundColor Yellow
+    
+    Write-Host "`n--- Final Summary ---" -ForegroundColor Magenta
+    Write-Host "Rules Removed: $removedCount" -ForegroundColor Green
+    Write-Host "Rules Not Found (skipped removal): $notFoundCount" -ForegroundColor Yellow
+    Write-Host "Errors Encountered: $errorCount" -ForegroundColor Red
+    Write-Host "--- Script Finished ---" -ForegroundColor Magenta
 } else {
-    Write-Host "Rules Created: $($results.Created)" -ForegroundColor Green
-    Write-Host "Rules Updated: $($results.Updated)" -ForegroundColor Yellow
-    Write-Host "Rules Skipped (already in correct state): $($results.Skipped)" -ForegroundColor Cyan
+    Write-Host "Mode: CREATING/UPDATING RULES" -ForegroundColor Green
+    Write-Host "Rule Profiles: $($ruleProfiles -join ', ')" -ForegroundColor Cyan
+    Write-Host "Auto-Cleanup: $(if ($SkipAutoCleanup.IsPresent) { 'DISABLED' } else { 'ENABLED' }) (will remove rules for ports deleted from CSV)" -ForegroundColor Cyan
+    
+    # Load and process CSV
+    try {
+        $portsConfig = Import-Csv -Path $csvFilePath -ErrorAction Stop
+        Write-Host "INFO: Processing CSV configuration..." -ForegroundColor Cyan
+        Write-Host "INFO: Processing $($portsConfig.Count) rule operations..." -ForegroundColor Cyan
+        
+        # Get forwarding address from CSV or auto-detect
+        $forwardAddress = $null
+        foreach ($portConfig in $portsConfig) {
+            if ($portConfig.PSObject.Properties['ForwardAddress'] -and $portConfig.ForwardAddress) {
+                $forwardAddress = $portConfig.ForwardAddress
+                Write-Host "INFO: Using forwarding address from CSV: $forwardAddress" -ForegroundColor Green
+                break
+            }
+        }
+        
+        # If no ForwardAddress in CSV, try to auto-detect
+        if (-not $forwardAddress) {
+            $forwardAddress = Get-WSLAddress
+        }
+        
+        if (-not $forwardAddress) {
+            Write-Warning "WARNING: No forwarding address specified in CSV and could not auto-detect WSL address. Port forwarding will be skipped."
+        }
+        
+        # Process each port configuration
+        foreach ($portConfig in $portsConfig) {
+            # Validate CSV column presence
+            if (-not $portConfig.PSObject.Properties['Port']) {
+                Write-Warning "Skipping entry: Missing 'Port' column in CSV row: $($portConfig | ConvertTo-Json -Compress)"
+                continue
+            }
+            if (-not $portConfig.PSObject.Properties['Description']) {
+                Write-Warning "Skipping entry: Missing 'Description' column in CSV row: $($portConfig | ConvertTo-Json -Compress)"
+                continue
+            }
+            if (-not $portConfig.PSObject.Properties['Protocol']) {
+                Write-Warning "Skipping entry: Missing 'Protocol' column in CSV row: $($portConfig | ConvertTo-Json -Compress)"
+                continue
+            }
+
+            $portSpec = $portConfig.Port
+            $description = $portConfig.Description
+            $protocol = $portConfig.Protocol.ToUpper().Trim()
+            $enabled = if ($portConfig.PSObject.Properties['Enabled']) { 
+                if ($portConfig.Enabled -eq '1') { [Microsoft.PowerShell.Cmdletization.GeneratedTypes.NetSecurity.Enabled]::True }
+                else { [Microsoft.PowerShell.Cmdletization.GeneratedTypes.NetSecurity.Enabled]::False }
+            } else { [Microsoft.PowerShell.Cmdletization.GeneratedTypes.NetSecurity.Enabled]::True }
+
+            # Validate protocol
+            if ($protocol -notin @("TCP", "UDP", "BOTH")) {
+                Write-Warning "Skipping entry: Invalid protocol '$($portConfig.Protocol)' for port '$portSpec'. Must be 'TCP', 'UDP', or 'BOTH'."
+                continue
+            }
+
+            # Determine which protocols to process
+            $protocolsToProcess = @()
+            switch ($protocol) {
+                "TCP" { $protocolsToProcess += "TCP" }
+                "UDP" { $protocolsToProcess += "UDP" }
+                "BOTH" { $protocolsToProcess += @("TCP", "UDP") }
+            }
+
+            # Parse the port specification
+            $portsToProcess = @()
+
+            if ($portSpec -match '^\d+-\d+$') {
+                $rangeParts = $portSpec.Split('-')
+                $startPort = [int]$rangeParts[0]
+                $endPort = [int]$rangeParts[1]
+
+                if ($startPort -gt $endPort) {
+                    Write-Warning "Skipping entry: Invalid port range '$portSpec' for description '$description'. Start port cannot be greater than end port."
+                    continue
+                }
+
+                for ($i = $startPort; $i -le $endPort; $i++) {
+                    $portsToProcess += $i
+                }
+            } elseif ($portSpec -match '^\d+$') {
+                $portsToProcess += [int]$portSpec
+            } else {
+                Write-Warning "Skipping entry: Invalid port specification '$portSpec' for description '$description'. Must be a single port or a range (e.g., '80' or '2280-2290')."
+                continue
+            }
+
+            # Create rule data for each protocol and port combination
+            foreach ($currentProtocol in $protocolsToProcess) {
+                foreach ($portNumber in $portsToProcess) {
+                    # Collect port info for port forwarding (only TCP ports that need forwarding)
+                    if ($currentProtocol -eq "TCP" -and $forwardAddress) {
+                        $portForwarding = if ($portConfig.PSObject.Properties['PortForwarding']) { $portConfig.PortForwarding } else { "1" }
+                        $location = if ($portConfig.PSObject.Properties['Location']) { $portConfig.Location } else { "WSL" }
+                        
+                        $portsConfig += @{
+                            Port = $portNumber
+                            Description = $description
+                            PortForwarding = $portForwarding
+                            Location = $location
+                        }
+                    }
+                    
+                    # Add to current state for comparison
+                    if (-not $RemoveRules.IsPresent) {
+                        $currentState += @{
+                            Port = $portNumber
+                            Protocol = $currentProtocol
+                            Description = $description
+                            OriginalSpec = $portSpec
+                            Enabled = $enabled
+                        }
+                    }
+
+                    $individualRuleName = "$ruleBaseName - $description (Port $portNumber/$currentProtocol)"
+                    
+                    $allRulesData += @{
+                        RuleName = $individualRuleName
+                        Port = $portNumber
+                        Protocol = $currentProtocol
+                        Description = $description
+                        Enabled = $enabled
+                        OriginalSpec = $portSpec
+                    }
+                }
+            }
+        }
+        
+        # Configure port forwarding
+        if ($forwardAddress) {
+            Configure-PortForwarding -Ports $portsConfig -WSLAddress $forwardAddress
+        }
+        
+        # Save current state
+        Save-CurrentState -PortsConfig $portsConfig
+        
+    } catch {
+        Write-Error "ERROR: Failed to process CSV file: $($_.Exception.Message)"
+        exit 1
+    }
 }
-Write-Host "Errors Encountered: $($results.Errors)" -ForegroundColor Red
-Write-Host "--- Script Finished ---" -ForegroundColor Cyan
 
 # === Prevent the script from closing automatically ===
 Write-Host "`nScript execution completed. Press any key to close this window..." -ForegroundColor Yellow
